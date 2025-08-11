@@ -1,0 +1,1472 @@
+---
+title: "Tendencias Delictivas en España: Un Enfoque Socioeconómico (2013-2022)"
+output: html_document
+date: "2024-12-01"
+---
+
+Fecha última actualización : `r format(Sys.Date(), '%B %d, %Y')`.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE
+  )
+
+getwd()
+setwd("C:/TrabajoR/PROYECTO")
+```
+
+<!--Instalación/carga librerías utilizadas.-->
+```{r, echo = FALSE}
+if (!require(openxlsx)) install.packages('openxlsx') 
+library(openxlsx)
+if (!require(dplyr)) install.packages('dplyr') 
+library(dplyr)
+if (!require(ggplot2)) install.packages('ggplot2') 
+library(ggplot2)
+if (!require(scales)) install.packages('scales') 
+library(scales)
+if (!require(tidyr)) install.packages('tidyr') 
+library(tidyr)
+if (!require(qcc)) install.packages('qcc') 
+library(qcc)
+if (!require(RColorBrewer)) install.packages('RColorBrewer') 
+library(RColorBrewer)
+if (!require(lubridate)) install.packages('lubridate') 
+library(lubridate)
+if (!require(plotly)) install.packages('plotly') 
+library(plotly)
+if (!require(kableExtra)) install.packages('kableExtra') 
+library(kableExtra)
+if (!require(geojsonio)) install.packages('geojsonio') 
+library(geojsonio)
+if (!require(leaflet)) install.packages('leaflet') 
+library(leaflet)
+if (!require(fpp3)) install.packages('fpp3') 
+library(fpp3)
+if (!require(tidyverse)) install.packages('tidyverse') 
+library(tidyverse)
+if (!require(highcharter)) install.packages('highcharter') 
+library(highcharter)
+source("utilidades.R")
+```
+
+<!--Proceso de limpieza y Organización de las Tablas-->
+  <!--TABLA DELITOS-->
+```{r}
+# Carga de los datos desde el archivo Excel
+tabla_delitos <- read.xlsx("001Delitos_CCAA_2013_2022.xlsx", startRow = 7) %>% 
+  as_tibble(.name_repair = "unique") %>% 
+  slice(1:210)
+
+# Limpieza de datos: eliminación de fragmentos 'xml:space="preserve">'
+tabla_delitos <- tabla_delitos %>% 
+  rename(c1 = ...1) %>% 
+  mutate(
+    c1 = trimws(gsub('xml:space="preserve">', '', c1))  # Eliminación de caracteres no deseados
+  )
+
+# Filtrado de datos: se eliminan los registros correspondientes a los años, para centrarse en las Comunidades Autónomas
+tabla_delitos <- tabla_delitos %>% 
+  filter(!c1  %in% "2013":"2022") %>% 
+  rename(CCAA = c1) %>% 
+  group_by(CCAA) %>% 
+  mutate(
+    Anyo = as.factor(rep(2022:2013, lenght.out = dplyr::n()))  # Creación de la variable 'Anyo' para cada Comunidad Autónoma
+  ) %>% 
+  relocate(Anyo)
+
+# Limpieza adicional de nombres de Comunidades Autónomas: eliminación de números indeseados
+tabla_delitos <- tabla_delitos %>% 
+  mutate(
+    CCAA = trimws(gsub("[0-9]+", '', CCAA))  # Elimina cualquier número dentro de los nombres de las CCAA
+  )
+
+# Normalización de los nombres de las CCAA: ajuste de nombres para mantener coherencia
+tabla_delitos <- tabla_delitos %>%
+  mutate(CCAA = case_when(
+    CCAA == "TOTAL NACIONAL" ~ "Total Nacional",
+    CCAA == "ANDALUCIA" ~ "Andalucía",
+    CCAA == "ARAGON" ~ "Aragón",
+    CCAA == "ASTURIAS (PRINCIPADO DE)" ~ "Asturias, Principado de",
+    CCAA == "BALEARS (ILLES)" ~ "Balears, Illes",
+    CCAA == "CANARIAS" ~ "Canarias",
+    CCAA == "CANTABRIA" ~ "Cantabria",
+    CCAA == "CASTILLA Y LEON" ~ "Castilla y León",
+    CCAA == "CASTILLA - LA MANCHA" ~ "Castilla - La Mancha",
+    CCAA == "CATALUÑA" ~ "Cataluña",
+    CCAA == "COMUNITAT VALENCIANA" ~ "Comunitat Valenciana",
+    CCAA == "EXTREMADURA" ~ "Extremadura",
+    CCAA == "GALICIA" ~ "Galicia",
+    CCAA == "MADRID (COMUNIDAD DE)" ~ "Madrid, Comunidad de",
+    CCAA == "MURCIA (REGION DE)" ~ "Murcia, Región de",
+    CCAA == "NAVARRA (COMUNIDAD FORAL DE)" ~ "Navarra, Comunidad Foral de",
+    CCAA == "PAIS VASCO" ~ "País Vasco",
+    CCAA == "RIOJA (LA)" ~ "Rioja, La",
+    CCAA == "CIUDAD AUTONOMA DE CEUTA" ~ "Ceuta",
+    CCAA == "CIUDAD AUTONOMA DE MELILLA" ~ "Melilla",
+    TRUE ~ CCAA  # Cualquier otro nombre que no esté en la lista se mantiene igual
+  ))
+```
+
+
+  <!--TABLA POBLACIÓN-->
+```{r}
+# Carga de los datos desde el archivo Excel
+tabla_poblacion <- read.xlsx("002PoblacionCenso2013_2022.xlsx", startRow = 9) %>% 
+  as_tibble() %>% 
+  slice(1:210)
+
+# Limpieza de datos: eliminación de fragmentos 'xml:space="preserve">'
+tabla_poblacion <- tabla_poblacion %>% 
+  rename(c1 = `xml:space="preserve">`) %>%  # Renombrar la columna afectada para mayor claridad
+  mutate(
+    c1 = trimws(gsub('xml:space="preserve">', '', c1))  # Eliminación de caracteres técnicos no deseados
+  )
+
+# Filtrado de datos: eliminación de registros correspondientes a los años
+tabla_poblacion <- tabla_poblacion %>% 
+  filter(!c1  %in% "2013":"2022") %>%  # Se eliminan las filas que contienen los años, dejando solo las comunidades autónomas
+  rename(CCAA = c1) %>%  # Renombrar la columna con los nombres de las comunidades autónomas
+  group_by(CCAA) %>% 
+  mutate(
+    Anyo = as.factor(rep(2022:2013, lenght.out = dplyr::n()))
+  ) %>% 
+  relocate(Anyo)
+
+# Limpieza adicional de los nombres de las Comunidades Autónomas: eliminación de números
+tabla_poblacion <- tabla_poblacion %>% 
+  mutate(
+    CCAA = trimws(gsub("[0-9]+", '', CCAA))  # Eliminar cualquier número en los nombres de las comunidades autónomas
+  ) %>% 
+  rename(poblacion = Ambos.sexos)  # Renombrar la columna de población para facilitar su uso
+
+```
+
+
+  <!--TABLA RENTA-->
+```{r}
+# Carga de los datos desde el archivo Excel
+tabla_renta <- read.xlsx("003renta_Media_CCAA.xlsx", startRow = 7) %>% 
+  as_tibble() %>% 
+  slice(1:231)  # Selección de las filas relevantes
+
+# Limpieza inicial: eliminación de fragmentos técnicos
+tabla_renta <- tabla_renta %>% 
+  rename(c1 = `xml:space="preserve">`) %>% 
+  mutate(
+    c1 = trimws(gsub('xml:space="preserve">', '', c1))  # Eliminación de caracteres no deseados
+  )
+
+# Filtrado y reorganización de datos
+tabla_renta <- tabla_renta %>% 
+  slice(22:231) %>%  # Filtrado de filas específicas
+  filter(!c1  %in% "2013":"2022") %>%  # Eliminación de registros que contienen años
+  rename(CCAA = c1) %>%  # Renombrar la columna con los nombres de las CCAA
+  group_by(CCAA) %>% 
+  mutate(
+    Anyo = as.factor(rep(2022:2013, lenght.out = dplyr::n()))  # Creación de la columna 'Anyo'
+  ) %>%
+  relocate(Anyo)  # Reorganización de columnas
+
+# Limpieza adicional de nombres
+tabla_renta <- tabla_renta %>% 
+  mutate(
+    CCAA = trimws(gsub("[0-9]+", '', CCAA))  # Eliminación de números de los nombres de las CCAA
+  )
+```
+
+
+  <!--TABLA PARO-->
+```{r}
+# Carga de los datos desde el archivo Excel
+tabla_paro <- read.xlsx("004Tasa_Paro_CCAA.xlsx", startRow = 7, sheet = 1) %>% 
+  as_tibble(.name_repair = "unique") %>% 
+  slice(2:211)  # Selección de filas relevantes
+
+# Limpieza inicial: eliminación de fragmentos técnicos y conversión de valores
+tabla_paro <- tabla_paro %>% 
+  rename(c1 = ...1) %>% 
+  mutate(
+    c1 = trimws(gsub('xml:space="preserve">', '', c1)),  # Eliminar caracteres técnicos
+    Ambos.sexos = round(as.numeric(Ambos.sexos), 2)  # Redondear valores numéricos
+  )
+
+# Filtrado y reorganización
+tabla_paro <- tabla_paro %>% 
+  filter(!c1  %in% "2013":"2022") %>%  # Eliminar registros que contienen años
+  rename(CCAA = c1) %>%  # Renombrar columna con nombres de CCAA
+  group_by(CCAA) %>% 
+  mutate(
+    Anyo = as.factor(rep(2022:2013, lenght.out = dplyr::n()))  # Crear columna 'Anyo'
+  ) %>% 
+  relocate(Anyo)  # Reorganizar columnas
+
+# Limpieza adicional de nombres
+tabla_paro <- tabla_paro %>% 
+  mutate(
+    CCAA = trimws(gsub("[0-9]+", '', CCAA))  # Eliminar números de los nombres de las CCAA
+  )
+
+```
+
+
+  <!--PRIMERA VERSIÓN TABLA FINAL-->
+```{r}
+# Primera versión de la tabla final: unión de las tablas limpias. Combina las tablas de renta, población, delitos y paro usando las claves comunes 'Anyo' y 'CCAA'
+tabla_final_limpieza <- left_join(tabla_renta, tabla_poblacion, by = c("Anyo", "CCAA")) %>%
+  left_join(tabla_delitos, by = c("Anyo", "CCAA")) %>%
+  left_join(tabla_paro, by = c("Anyo", "CCAA")) %>%
+  relocate(TOTAL.INFRACCIONES.PENALES, .after = CCAA) %>%
+  relocate(poblacion, Renta.neta.media.por.hogar, Ambos.sexos, .after = last_col())
+
+# Renombro todas las columnas con nombres más cortos y cómodos, haciendo así que el tratamiento de esta sea mucho mas sencillo
+tabla_final_limpieza <- tabla_final_limpieza %>% 
+  rename(
+    Tot_Del = TOTAL.INFRACCIONES.PENALES,
+    Cntr_Per = `1..CONTRA.LAS.PERSONAS`,
+    Cntr_Lib = `2..CONTRA.LA.LIBERTAD`,
+    Cntr_Lib_sex = `3..LIBERTAD.SEXUAL`,
+    Cntr_Rel_Fam = `4..RELACIONES.FAMILIARES`,
+    Cntr_Pat = `5..PATRIMONIO`,
+    Cntr_Segcol = `6..SEGURIDAD.COLECTIVA`,
+    Fal = `7..FALSEDADES`,
+    Cntr_Adm_Pub = `8..ADMON..PUBLICA`,
+    Cntr_Adm_Jus = `9..ADMON..JUSTICIA`,
+    Cntr_Ordpub = `10..ORDEN.PUBLICO`,
+    Cntr_Legesp = `11..LEGISLACION.ESPECIAL`,
+    Rest_Del = `12..OTRAS.INFRACCIONES.PENALES`,
+    Rent_Net_Mh = Renta.neta.media.por.hogar,
+    Pob = poblacion,
+    Tasa_Paro = Ambos.sexos
+    ) %>% 
+  mutate(
+    Anyo = as.factor(Anyo)
+  )
+```
+
+
+  <!--TABLA RENTA CATEGÓRICA-->
+```{r}
+# Definición de categorías de renta
+riqueza <- rep(c("Alta", "Media", "Baja"), c(6, 7, 6))
+
+# Lista de comunidades autónomas en el orden correspondiente a las categorías de renta
+comunidades <- c("Madrid, Comunidad de", "País Vasco", "Navarra, Comunidad Foral de", 
+         "Cataluña", "Aragón", "Balears, Illes", "Rioja, La", 
+         "Castilla y León", "Cantabria", "Galicia", "Asturias, Principado de", 
+         "Comunitat Valenciana", "Murcia, Región de", "Ceuta", 
+         "Castilla - La Mancha", "Canarias", "Extremadura", "Andalucía", "Melilla")
+
+# Creación de la tabla de categorías de renta
+tabla_cat <- tibble(
+  CCAA = comunidades,
+  Rent_Net_Cat = riqueza
+)
+
+# Unión de la tabla de categorías con la tabla final
+tabla_final_limpieza <- left_join(tabla_final_limpieza, tabla_cat, by = "CCAA") %>% 
+  mutate(
+    Rent_Net_Cat = factor(Rent_Net_Cat, levels = c("Alta", "Media", "Baja")),
+    Orden = ifelse(CCAA == "Total Nacional", 0, 1)
+  ) %>%
+  group_by(Anyo, CCAA) %>% 
+  arrange(Anyo, Orden, Rent_Net_Cat) %>%
+  dplyr::select(-Orden) %>%  # Eliminar columna auxiliar
+  ungroup()
+```
+
+
+  <!--TABLA PARO CATEGÓRICA-->
+```{r}
+# Definición de categorías de tasa de paro
+paro <- rep(c("Baja", "Media", "Elevada"), c(6, 7, 6))
+
+# Lista de comunidades autónomas en orden correspondiente a las categorías de paro
+comunidades <- c("Navarra, Comunidad Foral de", "País Vasco", "Rioja, La", 
+           "Aragón", "Cantabria", "Madrid, Comunidad de", 
+           "Cataluña", "Castilla y León", "Balears, Illes", 
+           "Galicia", "Asturias, Principado de", 
+           "Comunitat Valenciana", "Murcia, Región de", "Castilla - La Mancha", "Canarias", "Extremadura", "Andalucía", "Melilla", "Ceuta")
+
+# Creación de la tabla de categorías de tasa de paro
+tabla_par_cat <- tibble(
+  CCAA = comunidades,
+  Tasa_Paro_Cat = riqueza
+)
+
+# Unión de la tabla de categorías de paro con la tabla final
+tabla_final_limpieza <- left_join(tabla_final_limpieza, tabla_par_cat, by = "CCAA") %>% 
+  mutate(
+    Rent_Net_Cat = factor(Rent_Net_Cat, levels = c("Alta", "Media", "Baja")),
+    Orden = ifelse(CCAA == "Total Nacional", 0, 1),
+    Anyo = as.factor(Anyo)
+  ) %>%
+  group_by(Anyo, CCAA) %>% 
+  dplyr::select(-Orden) %>%  # Eliminar la columna auxiliar de orden
+  ungroup()
+```
+
+  <!--SEGUNDA VERSIÓN TABLA FINAL-->
+```{r}
+# Agrupación de categorías menores de delitos
+tabla_final <- tabla_final_limpieza %>% 
+  mutate(
+    Rest_Del = Rest_Del + Cntr_Rel_Fam + Cntr_Adm_Pub + Cntr_Legesp + Fal + Cntr_Adm_Jus + Cntr_Ordpub,  # Consolidar delitos residuales
+    Cntr_Lib = Cntr_Lib + Cntr_Lib_sex  # Agrupar delitos de libertad y libertad sexual
+  ) %>%
+  select(-Cntr_Rel_Fam, -Cntr_Adm_Pub, -Cntr_Legesp, -Cntr_Lib_sex, -Fal, -Cntr_Adm_Jus, -Cntr_Ordpub)  # Eliminar columnas agrupadas
+
+# Unión de Ceuta y Melilla en una sola categoría
+tabla_final <- tabla_final %>% 
+  mutate(CCAA = ifelse(CCAA %in% c("Ceuta", "Melilla"), "Ceuta y Melilla", CCAA)) %>%  # Renombrar Ceuta y Melilla
+  group_by(Anyo, CCAA) %>% 
+  summarise(
+    # Sumar variables numéricas relevantes
+    across(where(is.numeric) & !all_of(c("Rent_Net_Mh", "Tasa_Paro")), sum, na.rm = TRUE),  
+    # Promediar valores continuos relevantes
+    Tasa_Paro = mean(Tasa_Paro),  # Promedio de tasa de paro
+    Rent_Net_Mh = mean(Rent_Net_Mh, na.rm = TRUE),  # Promedio de renta neta
+    Rent_Net_Cat = first(Rent_Net_Cat),
+    Tasa_Paro_Cat = first(Tasa_Paro_Cat),
+    .groups = 'drop'
+  ) %>%
+  ungroup()
+```
+
+
+  <!--TABLA FINAL POR CADA 100,000 HABITANTES-->
+```{r}
+# Ajustar las variables de delitos a una escala relativa por cada 100,000 habitantes
+tabla_final_miles <- tabla_final %>% 
+  mutate(
+    across(c(Tot_Del:Rest_Del), ~round((. / Pob) * 100000, 2))  # Primero, se escala y luego se redondea
+  ) %>% 
+  ungroup()
+```
+
+
+  <!--GEOJSON MAPA-->
+```{r}
+ccaa.geoj <- geojsonio::geojson_read('https://ctim.es/AEDV/data/geo_spain_autonomias.geojson',  what = "sp")
+
+geoj_ti <- ccaa.geoj %>% as_tibble()
+
+geoj_ti <- geoj_ti %>%
+  mutate(NAME_1 = case_when(
+    NAME_1 == "Andalucía" ~ "Andalucía",
+    NAME_1 == "Aragón" ~ "Aragón",
+    NAME_1 == "PrincipadodeAsturias" ~ "Asturias, Principado de",
+    NAME_1 == "IslasBaleares" ~ "Balears, Illes",
+    NAME_1 == "IslasCanarias" ~ "Canarias",
+    NAME_1 == "Cantabria" ~ "Cantabria",
+    NAME_1 == "Castilla-LaMancha" ~ "Castilla - La Mancha",
+    NAME_1 == "CastillayLeón" ~ "Castilla y León",
+    NAME_1 == "Cataluña" ~ "Cataluña",
+    NAME_1 == "CeutayMelilla" ~ "Ceuta y Melilla",
+    NAME_1 == "ComunidadValenciana" ~ "Comunitat Valenciana",
+    NAME_1 == "Extremadura" ~ "Extremadura",
+    NAME_1 == "Galicia" ~ "Galicia",
+    NAME_1 == "ComunidaddeMadrid" ~ "Madrid, Comunidad de",
+    NAME_1 == "RegióndeMurcia" ~ "Murcia, Región de",
+    NAME_1 == "ComunidadForaldeNavarra" ~ "Navarra, Comunidad Foral de",
+    NAME_1 == "PaísVasco" ~ "País Vasco",
+    NAME_1 == "LaRioja" ~ "Rioja, La",
+    TRUE ~ NAME_1
+  ))
+```
+
+[Enlace cuadro de mandos](http://10.22.143.222:3838/sample-apps/a2511/CuadroDeMandos.Rmd)
+
+
+## **Estado Actual y Objetivos**
+
+Desde sectores ideológicos opuestos se ha relacionado la pobreza, con la delincuencia. Ya en la época marxista se hacía énfasis en los efectos sobre la delincuencia que podrían derivar de una economía capitalista y su tendencia a la polarización de rentas.  Mientras que en las sociedades de concepción más capitalista, ha sido habitual que los “más pudientes” de los países más diversos identificaran la pobreza como fuente de todos los males, entre ellos la delincuencia.  La pobreza, de acuerdo con este punto de vista capitalista, implicaría, malas condiciones de salud y de higiene, familias desestructuradas, ausencia de educación y de valores sociales, siendo todo este conjunto de circunstancias que relacionan con la pobreza las que conducirían irremediablemente a la delincuencia.
+
+Por otro lado, el conjunto de las situaciones particulares de desempleo es quizás uno de los problemas más graves que debe hacer frente una sociedad en lo que respecta a su bienestar social. *"Es un problema que afecta gravemente a la realidad de las personas que lo sufren y que puede transformar el carácter, el estado anímico, las capacidades y los intereses de una persona, haciendo que se vuelva una persona con falta de esperanzas, depresiva, negativa y mucho más estresada"* [Bembibre C. (2010)](https://significado.com/desempleo/), llevando a las personas en algunas ocasiones a cometer actos ilegales como un acto de desesperación.
+
+En su trabajo sobre violencia y distribución de la renta, [Bourguignon, F., Nuñez, J., & Sanchez, F. (2003)](https://www.jstor.org/stable/40005193) defienden que sólo una parte concreta de la distribución de la renta, y no ésta de forma global, tal y como la recogen las medidas de desigualdad comúnmente utilizadas, afecta al índice de criminalidad (sobre todo los delitos de robo) de una sociedad. 
+
+Del mismo modo en los diferentes estudios de [Fajnzylber, P., Lederman, D., & Loayza, N. (2002)](https://dialnet.unirioja.es/servlet/articulo?codigo=771689), en donde analizan de forma completa la capacidad explicativa de las principales variables consideradas en los modelos económicos del crimen, para un conjunto amplio de países (34 en el caso de robos y 45 en el de homicidios) y el período 1970-94. De su análisis estos autores destacan entre otras conclusiones, una desigual distribución de la renta, o mejor dicho, una inadecuada distribución de los beneficios derivados del crecimiento económico es lo que contribuye al aumento de la delincuencia.
+
+Como hemos podido observar los factores que influyen en el delito son un tema que ha despertado el interés de la investigación criminológica desde hace varias décadas, en lo que se refiere al caso español,  [Bandres y Ticio (2001)](https://www.revecap.alde.es/revista/numeros/27/pdf/bandres_diez.pdf) demuestran que tanto el nivel de renta *per cápita*, como la educación influirían en la tasa de delincuencia, el primero de forma positiva, y el segundo de forma negativa. Estos mismos autores indican que en torno al 80% del total de delitos conocidos por el Cuerpo Nacional de Policía corresponde a infracciones contra la propiedad. El porcentaje se mantiene prácticamente inalterado si únicamente se contabilizan las capitales de provincia de la muestra.
+
+El proyecto que propongo aborda un tema de gran relevancia en la actualidad: la relación entre los niveles socioeconómicos (niveles de renta), tasa de paro y de pobreza con la incidencia de la criminalidad en las Comunidades Autónomas de España.
+
+Se centra en la evolución de los delitos entre 2013 y 2022, un período en el que las dinámicas económicas y sociales de las regiones españolas han experimentado cambios significativos, pandemia incluida.
+
+Es por ello que la motivación detrás de este proyecto es comprender cómo los factores económicos y sociales influyen en la incidencia de delitos. Este análisis tiene el potencial de:
+
+- Informar políticas públicas dirigidas a reducir la criminalidad mediante estrategias socioeconómicas.
+- Facilitar la toma de decisiones basadas en datos en áreas como la justicia, la seguridad pública y la gestión regional.
+- Mejorar la equidad en el diseño de medidas preventivas adaptadas a las características de cada región.
+
+Por lo expuesto anteriormente, los objetivos principales que se pretenden cubrir con este proyecto son:
+
+1. **Analizar la evolución temporal de los delitos en España** durante el período 2013-2022, identificando patrones significativos.
+2. **Estudiar la relación entre el nivel de renta y paro con la incidencia de delitos ajustados por población**, categorizando las regiones en tres niveles: alta, media y baja renta.
+3. **Proporcionar herramientas visuales y analíticas** que permitan explorar y comunicar los resultados de forma clara, tanto para investigadores como para tomadores de decisiones.
+4. **Contribuir a la literatura científica** en áreas como criminología económica y análisis regional, generando un modelo replicable para estudios futuros.
+
+---
+
+## **Aportaciones**
+El presente proyecto tiene un impacto potencial en diversas áreas, que van desde un impacto socioeconómico hasta un impacto tanto técnico como científico. La temática del mismo, está directamente relacionada con al menos cuatro de los Objetivos de Desarrollo Sostenible (ODS) sugeridos por la ULPGC.
+
+1. **Impacto Socioeconómico**
+    - **Reducción de desigualdades:** Al identificar las regiones más vulnerables desde el punto de vista socioeconómico y de seguridad, se pueden diseñar políticas más equitativas y dirigidas.
+    - **Optimización de recursos:** Los datos ayudan a priorizar el uso de recursos públicos relacionados con la seguridad y protección de las personas y bienes, en regiones y áreas con mayor necesidad de intervención.
+    - **Prevención efectiva:** Al entender los factores subyacentes de la criminalidad, se pueden implementar estrategias preventivas adaptadas a cada región.
+
+2. **Impacto Técnico**
+    - **Metodología reproducible:** Se desarrolla una metodología clara que incluye limpieza, análisis y visualización de datos, utilizando herramientas avanzadas en R.
+    - **Normalización de datos:** Los delitos se ajustan por población (cada 100,000 habitantes), mejorando la comparabilidad entre regiones con tamaños de población muy diferentes.
+    - **Análisis integrado:** La combinación de datos económicos y criminales crea un enfoque holístico, único en su ámbito.
+
+3. **Impacto Científico**
+    - Este estudio enriquece la comprensión de la relación entre economía y criminalidad, proporcionando un enfoque empírico basado en datos.
+    - Proporciona un modelo que puede aplicarse a otras regiones o países, contribuyendo al avance del conocimiento en criminología y estudios regionales.
+
+### **Relación con los Objetivos de Desarrollo Sostenible (ODS)**
+- **ODS 10: Reducción de las desigualdades:** El análisis aborda cómo las desigualdades económicas afectan la seguridad en las regiones, promoviendo estrategias para equilibrar las condiciones entre comunidades.
+- **ODS 16: Paz, justicia e instituciones sólidas:** Proporciona evidencia basada en datos para fortalecer las instituciones encargadas de la justicia y la seguridad, mejorando su capacidad de respuesta.
+- **ODS 8: Trabajo decente y crecimiento económico:** Analiza el impacto del crecimiento económico en las tasas de criminalidad, destacando cómo un desarrollo inclusivo puede contribuir a una sociedad más segura.
+- **ODS 17: Alianzas para lograr los objetivos:** Fomenta la colaboración interdisciplinaria entre instituciones públicas, académicas y técnicas para abordar un problema complejo desde múltiples perspectivas.
+
+---
+
+## **Fuentes de Datos y Fiabilidad**
+Los datos utilizados en este estudio se han obtenido a través de datos oficiales proporcionados de diferentes fuentes. Por un lado el Instituto Nacional de Estadística (INE) que, tal y como se indica en su página web: *“produce información estadística de la más alta calidad acerca de numerosos ámbitos como la economía, la sociedad y el medio ambiente, entre otros, para favorecer así la correcta toma de decisiones…Ofreciendo una gran cantidad de información estadística de libre acceso...”* [Ficheros de microdatos](https://www.ine.es/prodyser/microdatos.htm), formando parte del Sistema Estadístico Europeo (Eurostat Database). 
+
+Por otro lado hemos recurrido a una segunda fuente, como es el Ministerio del Interior, el cual tiene un [Portal estadístico de criminalidad](https://estadisticasdecriminalidad.ses.mir.es/publico/portalestadistico/) con series anuales, de libre acceso. Al igual que el INE forma también, parte del Sistema Estadístico Europeo.
+
+### **Descripción de los ficheros obtenidos según fuente de datos**
+El proyecto se centra en la elaboración y limpieza de los ficheros con los conjuntos de datos obtenidos, como indicamos anteriormente, del Instituto Nacional de Estadística (INE) y del Ministerio el Interior (MIR), con el mismo rango temporal (2013-2022) en cada uno de ellos:
+
+- **Datos INE**
+    - [**Población por comunidades autónomas(02001)**](https://www.ine.es/jaxi/Tabla.htm?path=/t20/e245/p08/l0/&file=02001.px&L=0) : Como base para normalizar los datos y ajustarlos según el tamaño de la población.
+    - [**Renta por hogar por comunidades autónomas(9949)**](https://www.ine.es/jaxiT3/Tabla.htm?t=9949&L=0): Indicador para analizar las diferencias económicas entre regiones. 
+    - [**Tasas de paro por comunidades autónomas(66055)**](https://www.ine.es/jaxiT3/Tabla.htm?t=66055&L=0): media anual de los cuatrimestres por año de la población en paro. 
+
+- **Datos Ministerio del Interior**
+    - [**Hechos conocidos**](https://estadisticasdecriminalidad.ses.mir.es/publico/portalestadistico/datos.html?type=pcaxis&path=/Datos1/&file=pcaxis): Donde se computan datos provenientes de la Policía Nacional, Guardia Civil, policías autonómicas y policías locales que proporcionan datos al Sistema Estadístico de Criminalidad. 
+
+---
+
+## **Análisis Inicial y Limpieza de Datos**
+Para ello utilizamos el programa estadístico R. R es una herramienta de programación estadística que está especialmente equipada para gestionar un gran volumen de datos, formado por un conjunto de herramientas muy flexibles  que pueden ampliarse fácilmente mediante paquetes, librerías, etc. siendo además de código abierto.
+
+En un primer momento se realizó un análisis exploratorio de los distintos ficheros obtenidos con objeto de detectar posibles desviaciones y errores en los mismos. Pudimos observar que, en el caso de la población censal (INE), las Ciudades Autónomas de Ceuta y Melilla, debido a su tamaño poblacional y características socioeconómicas únicas, se diferenciaban notablemente del resto de las comunidades autónomas en varios indicadores. Para asegurar su inclusión en el análisis y evitar que su menor tamaño distorsionara las comparaciones, se decidió tratarlas de manera conjunta. Este enfoque también se justificó porque ambas presentan un comportamiento similar en variables como la renta y la tasa de paro, lo que refuerza la coherencia de su agrupación.
+
+En el caso de los datos referentes a los hechos conocidos (MIR) se observa una desviación importante en el volúmen de los delitos (acorde a lo observado por [Bandres y Ticio (2001)](https://www.revecap.alde.es/revista/numeros/27/pdf/bandres_diez.pdf) ) en favor de los delitos contra el patrimonio, en nuestro caso y de manera agrupada, como se puede apreciar en la siguiente gráfica, representan un 76.57%, y el conjunto de los 4 primeros (ordenado de mayor a menor), engloban el 95.29% de los casos, dicho esto y en aras de una mejor visualización y comprensión de los datos se procedió a agrupar los delitos conocidos, en variables que seran descritas posteriormente.
+
+```{r}
+barra_TipDel_Tot <- tabla_final_limpieza %>% 
+  filter(CCAA == "Total Nacional") %>% 
+  pivot_longer(Cntr_Per:Rest_Del, names_to = "Delitos", values_to = "Valores") %>% 
+  group_by(Delitos) %>% 
+  summarise(
+    Valores = sum(Valores),
+    .groups = 'drop'
+  ) %>% 
+  arrange(desc(Valores)) %>% 
+  ggplot(aes(x = Valores, y = reorder(Delitos, Valores) , fill = Delitos, text = paste("Delito: ", Delitos, "<br>Cantidad: ",Valores))) +
+  geom_bar(stat = "identity") +
+  labs(
+    title = "Distribución Total de Delitos por Tipo en el Ámbito Nacional",
+    x = "Número de Delitos",
+    y = "Delitos"
+  ) +
+  theme(
+    legend.position = "none"
+  ) +
+  scale_x_continuous(labels = label_number(),
+  n.breaks = 9
+    )
+
+ggplotly(barra_TipDel_Tot, tooltip = "text")
+```
+
+
+### **Incidencias Encontradas en el Proceso**
+Una de las incidencias más relevantes detectadas durante el análisis de los datos fue la presencia del texto `xml:space="preserve">` en los valores de ciertas columnas, algo que afectó a todas las tablas descargadas, independientemente de la fuente. Este atributo técnico forma parte de los estándares XML y se utiliza para indicar que los espacios en blanco deben conservarse al interpretar los datos. Aunque útil en ciertos contextos, en este caso particular resultaba innecesario y causando problemas en el procesamiento, que a continuación paso a detallar:
+
+- Al conservar espacios adicionales o fragmentos residuales, los valores de las columnas no se interpretaban correctamente, generando inconsistencias al intentar realizar operaciones como filtrados, agrupaciones o comparaciones.
+
+- Este problema requería limpiar los valores afectados para eliminar dichos fragmentos y garantizar que los datos fueran uniformes y procesables.
+
+La solución adoptada consistió en la realización de un proceso de limpieza sistemático que incluyó:
+
+1. **Eliminación de los fragmentos `xml:space="preserve">`:** Esto garantizó que los valores fueran interpretados sin elementos técnicos no deseados.
+
+2. **Eliminación de espacios adicionales:** Se recortaron los espacios en blanco al inicio y final de los valores, asegurando que cada dato quedará limpio y listo para su análisis.
+
+Otra incidencia relevante se encontró en los nombres de las Comunidades Autónomas dentro de la tabla del Ministerio del Interior ([**Hechos conocidos**](https://estadisticasdecriminalidad.ses.mir.es/publico/portalestadistico/datos.html?type=pcaxis&path=/Datos1/&file=pcaxis)). Estos nombres presentaban variaciones en el formato, como el uso de mayúsculas, caracteres no deseados (números o paréntesis) y la ausencia de tildes. Estas inconsistencias dificultaban la comparación y combinación de datos con las demás tablas del proyecto.
+
+Dado que las tablas provenientes del Instituto Nacional de Estadística (INE) representaban la mayor parte de los datos analizados, se decidió adoptar su formato de nombres como estándar de referencia para todo el proyecto. Este enfoque práctico permitió garantizar una estructura uniforme y simplificar la integración de las distintas fuentes de datos.
+
+Esta inconsistencia dificulta la comparación y agrupación de datos entre tablas, ya que los nombres no coincidían exactamente. Para resolver este problema:
+
+1. **Estandarización de Nombres:** Se corrigieron manualmente todos los nombres para que siguieran un formato uniforme, con tildes y capitalización correctas.
+
+2. **Eliminación de Caracteres No Deseados:** Se eliminaron números y caracteres como paréntesis o guiones que no aportaban información relevante.
+
+3. **Agrupación por Comunidad Autónoma:** Esto permitió organizar los registros de forma clara y homogénea, facilitando los análisis posteriores.
+
+Estas tareas aseguraron que los datos de ambas fuentes fueran compatibles entre sí, permitiendonos el realizar análisis posteriores más precisos sin problemas de nomenclatura, facilitando la integración de las fuentes de datos.
+
+---
+
+## **Organización y Descripción de los Datos**
+Estos datos se han procesado para crear **tablas**, una con valores absolutos usada en el análisis exploratorio inicial y limpieza de los datos, y una tabla final ajustando todas las variables numéricas en tasas por 100,000 habitantes, donde se unifica la información de delitos, población, renta y tasa de paro, lo cual facilita el análisis conjunto entre los años 2013 - 2022, siendo la frecuencia de datos **anual**, lo que permite un correcto análisis temporal, describiendo a continuación las variables de dicha tabla:
+
+- **Variables Categóricas**
+    - **CCAA (Comunidades Autónomas)**: Identifica a cada Comunidad Autónoma de España. Los nombres se han limpiado para eliminar números y caracteres no deseados.
+    - **Rent_Net_Cat (Categoría de Renta)**: Variable categórica que nos va servir para  clasificar a las Comunidades Autónomas en: **Alta**, **Media**, **Baja**. Esta categorización se creó de forma manual para facilitar comparaciones basadas en el nivel [PIB per cápita de España de las Comunidades Autónomas (Gráfico)](https://www.bankinter.com/blog/finanzas-personales/pib-per-capita-espana-comunidades-autonomas-grafico).
+    - **Tasa_Paro_Cat (Categoría de Paro)**: Tasa de paro por Comunidad Autónoma categorizada en Alta (en función de la media + una desviación estándar), Media y Baja (en función de la media - una desviación estándar) de los valores 2013-2022.
+```{r, echo = FALSE}
+tabla <- data.frame(
+  CCAA = c("Navarra, Comunidad Foral de", "País Vasco", "Rioja, La", 
+           "Aragón", "Cantabria", "Madrid, Comunidad de", 
+           "Cataluña", "Castilla y León", "Balears, Illes", 
+           "Galicia", "Asturias, Principado de", "Total Nacional", 
+           "Comunitat Valenciana", "Murcia, Región de", "Castilla - La Mancha", "Canarias", "Extremadura", "Andalucía", "Melilla", "Ceuta"),
+  PromedioDeTot = c(11.896, 11.942, 13.146, 13.655, 13.987, 14.286, 14.799, 14.801, 15.023, 15.552, 16.249, 18.226, 19.07, 19.391, 21.2, 24.904, 25.094, 26.437, 28.088, 28.185),
+    Categoría = rep(c("Baja", "Media", "Elevada"), c(6, 8, 6)),
+  DesvEstDeTot = c(NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, 3.855996075, NA, NA, 
+                   NA, NA, NA, NA, NA, NA)
+)
+
+# Generar la tabla con kable
+tabla %>%
+  kable(align = c("l", "c", "c", "c"), col.names = c("CCAA", "Promedio", "Categoría", "Desv. Est.")) %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover"))
+```
+
+- **Variables Numéricas **
+Llegados a este punto procede realizar unas apreciaciones , respecto a los datos referentes a los hechos conocidos. Se observa una desviacion importante en el volúmen de los delitos (acorde a lo observado por [Bandres y Ticio (2001)](https://www.revecap.alde.es/revista/numeros/27/pdf/bandres_diez.pdf) ) en favor de los delitos contra el patrimonio. Es por ello que para facilitar la lectura, procedimos a agruparlos en:
+    - **Anyo**: Rango temporal 2013-2022.
+    - **Tot_Del**: Tasa de delitos registrados anualmente por Comunidad Autónoma.
+    - **Cntr_Pat**: Tasa de delitos **contra el Patrimonio** registrados anualmente por Comunidad Autónoma.
+    - **Cntr_Per**: Tasa de delitos **contra las Personas** registrados anualmente por Comunidad Autónoma.
+    - **Cntr_Lib**: Tasa de delitos **contra la Libertad**, incluyendo delitos **contra la Libertad Sexual** registrados anualmente por Comunidad Autónoma.
+    - **Cntr_Segcol**: Tasa de delitos **contra la Seguridad Colectiva** registrados anualmente por Comunidad Autónoma.
+    - **Rest_Del**: Tasa de delitos no incluidos en los apartados anteriores, incluyendo delitos **contra la Administración de Justicia**, **contral el Orden Público**, **Falsedades**, **contra Relaciones Familiares**, **contra Administración Pública** y **Legislación Especial**, registrados anualmente por Comunidad Autónoma.
+    - **Pob**: Número de habitantes por Comunidad Autónoma por año.
+    - **Rent_Net_Mh**: Renta neta media por hogar, en euros por año. 
+    - **Tasa_Paro**: Porcentaje de la población activa que se encuentra desempleada, registrado anualmente por Comunidad Autónoma.
+
+---
+
+## **Análisis Exploratorio**
+En esta sección se desarrolla el núcleo del estudio, pues se presentará el análisis principal. Es necesario aclarar en qué consiste el análisis exploratorio. Este tipo de análisis implica un enfoque inicial para examinar y comprender los datos mediante herramientas estadísticas descriptivas y visualizaciones gráficas. Su propósito principal es identificar patrones, relaciones y posibles anomalías en los datos, sirviendo como base para un estudio más profundo y detallado.
+
+### **Introducción**
+Se realizará un análisis detallado de los datos de delitos, comenzando con una visión general de su distribución a lo largo de los diferentes años y comunidades autónomas. Para ello, se presentará un mapa interactivo que refleja la media del total de delitos registrados en cada región durante el periodo. Esta visualización tiene como objetivo proporcionar una perspectiva global de las áreas con mayor incidencia delictiva, permitiendo identificar tendencias y patrones espaciales que serán esenciales para los análisis posteriores. A través de este enfoque, buscaremos comprender cómo se distribuyen los delitos a lo largo del tiempo y el espacio, y establecer las bases para un análisis más profundo.
+
+```{r}
+tabla_mapa_1 <- tabla_final_miles %>% 
+  filter(CCAA != "Total Nacional") %>%
+  group_by(CCAA) %>%
+  summarise(
+    Tot_Del = mean(Tot_Del, na.rm = TRUE),
+    .groups = 'drop'
+  )
+
+map_data_1 <- left_join(geoj_ti, tabla_mapa_1, join_by("NAME_1" == "CCAA"))
+
+# Crear etiquetas para el mapa
+etiquetas_tasa <- paste(
+  map_data_1$NAME_1,
+  "<br>Tasa de Criminalidad: ", round(map_data_1$Tot_Del, 2)
+) %>% lapply(htmltools::HTML)
+
+# Definir la paleta de colores basada en la tasa de criminalidad
+pal_tasa <- colorQuantile("YlOrRd", map_data_1$Tot_Del, n = 9)
+
+# Crear el mapa
+ccaa.geoj %>% 
+  leaflet() %>% 
+  addTiles() %>%
+  addPolygons(
+    fillColor = ~pal_tasa(map_data_1$Tot_Del),
+    weight = 2,
+    opacity = 1,
+    color = "white",
+    dashArray = "3",
+    fillOpacity = 0.7,
+    highlightOptions = highlightOptions(
+      weight = 2,
+      color = rgb(0.2, 0.2, 0.2),
+      dashArray = "",
+      fillOpacity = 0.7,
+      bringToFront = TRUE
+    ),
+    label = etiquetas_tasa  # Etiquetas que muestran la tasa
+  ) %>% 
+  addLegend("bottomleft", pal = pal_tasa, values = map_data_1$Tot_Del,
+            title = "Tasa de Criminalidad por 100,000 hab.",
+            labFormat = function(type, cuts, p) {
+              n = length(cuts)
+              as.character(round((as.integer(cuts)[-n] + as.integer(cuts)[-1]) / 2))
+            },
+            opacity = 1
+  )
+```
+
+### **Situación de la tasa de delitos por CCAA**
+Se analizarán las estadísticas de delitos registrados en las diferentes Comunidades Autónomas (CCAA) de España a lo largo de los años, tanto con un carácter general, como viendo la relación que estas tienen con la renta y el paro.
+
+#### **Evolución de Delitos a lo largo de los años**
+Refleja la tasa de delitos registrados por CCAA entre 2013 y 2022. Se aprecia una ligera disminución en el número de delitos durante los primeros años del período, a partir del 2015 se observa un aumento continuado del número de delitos registrados con una caída importante en el 2020 debido a las restriccion de movilidad y confinamientos derivados de la pandemia de COVID-19, con un repunte importante en los años siguientes (2021- 2022).
+
+El análisis también muestra diferencias importantes entre comunidades. Regiones como Islas Baleares, Cataluña, Madrid y Ceuta y Melilla suelen registrar cifras más altas, a pesar de que algunas de estas regiones no tengan una gran densidad poblacional y actividad económica. Por el contrario, comunidades como La Rioja, Galicia y Extremadura reflejan cifras más bajas, en línea con su menor densidad demográfica.
+```{r,fig.width=8, fig.asp = 0.8}
+tabla_final_miles %>% 
+  filter(CCAA != "Total Nacional") %>% 
+  hchart("line", hcaes(x = Anyo, y = Tot_Del, group = CCAA)) %>% 
+  hc_title(text = "Tasa de Delitos por CCAA y Año") %>%
+  hc_xAxis(title = list(text = "Año")) %>%
+  hc_yAxis(title = list(text = "Tasa de Delitos"))
+```
+
+#### **Evolución Normalizada por Tipo**
+Este mapa de calor nos permite reafirmar lo dicho anteriormente. Entre 2013 y 2015, se observa una disminución general en los delitos registrados. Este comportamiento podría estar vinculado a mejoras en la seguridad pública, así como a cambios en las dinámicas sociales y económicas tras la crisis financiera de 2008. En este contexto, es probable que los esfuerzos gubernamentales en políticas de prevención y seguridad hayan contribuido a reducir el índice delictivo durante este periodo.
+
+A partir de 2015, las estadísticas muestran un aumento sostenido en el número de delitos registrados. Este cambio puede reflejar un repunte económico que fomentó mayor movilidad social, lo que a su vez suele influir en las dinámicas delictivas. La recuperación de actividades económicas y sociales tras un periodo de contracción tiende a propiciar un incremento en los delitos relacionados con la vida pública, el patrimonio y la seguridad colectiva.
+
+En 2020, se aprecia una caída abrupta en la mayoría de los delitos, claramente atribuible al impacto de la pandemia de COVID-19. Las restricciones de movilidad, el confinamiento y la drástica reducción de actividades económicas y sociales limitaron las oportunidades para la comisión de delitos. Este fenómeno se refleja de manera contundente en todos los tipos de delitos analizados, excepto en los delitos contra la libertad.
+
+Finalmente, tras la pandemia, en 2021 y 2022, se registra un repunte significativo en las cifras delictivas. Este comportamiento reafirma cómo la normalización de la vida social y económica, con la reapertura de actividades y el incremento en la movilidad, generó un rápido retorno a niveles similares de criminalidad previos a la pandemia, e incluso un incremento en algunos casos.
+```{r, fig.width = 8, fig.asp = 1}
+mapa_calor <- tabla_final_miles %>% 
+    pivot_longer(c(Tot_Del:Rest_Del), names_to = "TipoDelito", values_to = "Values") %>% 
+    filter(CCAA == "Total Nacional", TipoDelito != "Tot_Del") %>%
+    group_by(Anyo, TipoDelito) %>%
+    summarize(Anyo = as.factor(Anyo),
+              Delitos_Total = mean(Values, na.rm = TRUE), .groups = 'drop') %>%
+    group_by(TipoDelito) %>%
+    mutate(Delitos_Normalizados = scales::rescale(Delitos_Total, to = c(0, 1))) %>%
+    ggplot(aes(x = Anyo, y = TipoDelito, fill = Delitos_Normalizados, 
+      text = paste(
+        "Año:", Anyo,
+        "<br>Tipo de Delito:", TipoDelito,
+        "<br>Valor Real:", round(Delitos_Total, 2),
+        "<br>Valor Normalizado:", round(Delitos_Normalizados, 2)
+      ))) +
+    geom_tile(color = "lightblue", lwd = 0.5, linetype = 1) +
+    scale_fill_gradientn(name = "Valor Normalizado", colors = brewer.pal(9, "YlOrRd")) +
+    theme_minimal() +
+    labs(
+      title = "Tasa de Delitos por Tipo y CCAA",
+      x="Año", 
+      y = "Tipo de Delito"
+       )
+  
+ggplotly(mapa_calor, tooltip = "text")
+```
+
+#### **Relación entre Renta Neta Media por Hogar y Total de Delitos**
+A continuación, se presentan dos gráficos que analizan la relación entre la renta media y el total de delitos, y entre la tasa de paro y el total de delitos. En ambos casos, los puntos se han categorizado según tres niveles de renta neta: "Alta", "Media" y "Baja", como se ha indicado anteriormente. Los resultados muestran tendencias variadas en función de la categoría de renta, aunque las correlaciones entre las variables no son particularmente fuertes, con una dispersión significativa en algunos casos.
+
+En las comunidades con renta baja, se observa una tendencia positiva: a medida que aumenta la renta media, también se incrementa el total de delitos. Sin embargo, la dispersión de los datos en esta categoría es considerable, lo que indica una variabilidad importante entre regiones con características similares en términos de renta. Este comportamiento podría estar influido por factores contextuales como las dinámicas sociales y económicas, que varían ampliamente dentro de este grupo.
+
+Por otro lado, en las comunidades con renta media, la dispersión de los datos es menor, lo que refleja una mayor homogeneidad entre estas regiones. En este caso, la relación entre renta y delitos presenta una leve tendencia negativa, sugiriendo que en estos contextos el incremento de la renta podría estar asociado con una ligera disminución en los delitos. Este patrón podría ser resultado de factores económicos y sociales más equilibrados, característicos de las regiones con niveles de renta intermedios.
+
+En las comunidades con renta alta, aunque la dispersión de los datos es menor en comparación con las regiones de renta baja, la correlación entre renta y delitos es prácticamente neutra o ligeramente negativa. Esto indica que, en estas regiones, el aumento de la renta media por hogar no necesariamente se traduce en un incremento del total de delitos. Factores como las políticas de seguridad pública, la densidad de población o el nivel de urbanización podrían jugar un papel más relevante en la incidencia delictiva que la renta en sí misma.
+
+En general, la dispersión observada en los datos de las distintas categorías de renta pone de manifiesto que la relación entre renta y criminalidad no es uniforme. Esto sugiere que la renta media no puede considerarse un factor determinante por sí solo en la explicación de los niveles de criminalidad, sino que está modulada por un conjunto más amplio de variables contextuales, como las políticas locales, la densidad de población y las dinámicas sociales específicas de cada comunidad.
+
+En lo que respecta a la relación entre la tasa de paro y el total de delitos, las comunidades con una baja tasa de paro presentan una dispersión considerable, con delitos que varían entre niveles bajos y altos. A pesar de esta dispersión, se observa una leve tendencia positiva, donde un ligero aumento en la tasa de paro parece estar asociado con un incremento en los delitos. Este comportamiento podría estar relacionado con dinámicas sociales y económicas complejas que varían entre estas regiones.
+
+Por el contrario, en las comunidades con una alta tasa de paro, los datos son más compactos y presentan una menor dispersión, lo que podría reflejar un patrón más homogéneo en estas regiones, que suelen ser menos densamente pobladas. Sin embargo, la relación entre paro y delitos en estas comunidades es prácticamente inexistente o ligeramente negativa. Esto refuerza la idea de que, en estas regiones, el desempleo no tiene un impacto directo y significativo en la criminalidad.
+
+A pesar de las diferencias entre las categorías analizadas, la dispersión general de los puntos en ambos gráficos sugiere que otros factores contextuales, como la urbanización, la densidad de población y las dinámicas sociales locales, desempeñan un papel importante en la incidencia delictiva. Por tanto, tanto la renta media como la tasa de paro no pueden considerarse factores determinantes por sí solos para explicar los niveles de criminalidad, sino que forman parte de un panorama mucho más complejo en el que interactúan diversas variables sociales y económicas.
+```{r}
+custom_colors <- c("Alta" = "indianred1", "Media" = "palegreen", "Baja" = "lightskyblue")
+
+# Gráfico de renta con colores personalizados y tooltip para la correlación
+scatterplot_renta <- tabla_final_miles %>% 
+  filter(CCAA != "Total Nacional") %>% 
+  rename(
+    `Renta Neta Media por Hogar` = Rent_Net_Mh,
+    `Tasa de Delitos` = Tot_Del
+  ) %>% 
+  ggplot(aes(x = `Renta Neta Media por Hogar`, y = `Tasa de Delitos`, color = Rent_Net_Cat)) + 
+  geom_point() +  
+  scale_color_manual(values = custom_colors) +  
+  scale_x_continuous(trans = 'log2') +
+  geom_smooth(method = lm, se = FALSE) +
+  labs(title = "Relación entre Renta Neta Media y Delitos Totales",
+       x = "Renta Neta Media por Hogar (log2)",
+       y = "Total de Delitos",
+       color = "Categorías") +
+  theme_minimal()
+
+# Gráfico de paro con colores personalizados y tooltip para la correlación
+scatterplot_paro <- tabla_final_miles %>% 
+  filter(CCAA != "Total Nacional") %>% 
+  rename(
+    `Tasa de Paro` = Tasa_Paro,
+    `Tasa de Delitos` = Tot_Del
+  ) %>% 
+  ggplot(aes(x = `Tasa de Paro`, y = `Tasa de Delitos`, color = Tasa_Paro_Cat)) + 
+  geom_point() +  
+  scale_color_manual(values = custom_colors) +  
+  scale_x_continuous(trans = 'log2') +
+  geom_smooth(method = lm, se = FALSE) +
+  labs(title = "Relación entre Tasa de Paro y Delitos Totales",
+       x = "Tasa de Paro (log2)",
+       y = "Total de Delitos",
+       color = "Categorías") +
+  theme_minimal()
+
+
+# Convertir a gráficos interactivos con correlación en el tooltip
+plot_renta <- ggplotly(scatterplot_renta, tooltip = c("x", "y", "text"))
+plot_paro <- ggplotly(scatterplot_paro, tooltip = c("x", "y", "text"))
+
+# Crear el subplot con títulos individuales y agregar subtítulos sobre cada gráfico
+subplot(
+  plot_renta %>% layout(title = list(text = "Renta Neta Media")),
+  plot_paro %>% layout(title = list(text = "Tasa de Paro")),
+  nrows = 1,
+  shareY = TRUE,  # Compartir eje Y para consistencia
+  widths = c(0.5, 0.5)  # Ajustar proporciones de ancho
+) %>%
+  layout(
+    title = "Tasa de Delitos según Renta y Paro",
+    height = 500,
+    width = 1000,
+    margin = list(t = 50, b = 50, l = 50, r = 50),
+          # Subtítulo para el gráfico de renta (colocarlo encima del gráfico de renta)
+    annotations = list(
+      list(
+        x = 0.15,
+        y = 1.05,
+        text = "Renta Neta Media",  # Texto del subtítulo
+        showarrow = FALSE,
+        font = list(size = 12, color = "black"),  # Tamaño y color del texto
+        xref = "paper",  # Usar "paper" para que no dependa de los datos
+        yref = "paper",  # Usar "paper" para que no dependa de los datos
+        align = "center"
+      ),
+      # Subtítulo para el gráfico de paro (colocarlo encima del gráfico de paro)
+      list(
+        x = 0.80,
+        y = 1.05,
+        text = "Tasa de Paro",
+        showarrow = FALSE,
+        font = list(size = 12, color = "black"),  # Tamaño y color del texto
+        xref = "paper",
+        yref = "paper", 
+        align = "center"
+      )
+    )
+  )
+```
+
+### **Situación de la tasa de delitos por tipo**
+#### **Delitos contra el Patrimonio**
+Este tipo de delitos representa el grueso de todos los delitos suponiendo un 76.57 % de los mismos , en esta categoría se engloban los delitos de hurto, robo con fuerza en las cosas, robos con violencia, estafas, blanqueo de capitales, etc..
+
+Se puede apreciar que el factor común en todas las comunidades es el descenso acentuado en el año 2020, mientras que en los años precedentes, salvo en Andalucía y Comunitat Valenciana cuya tendencia era de descenso suave pero mantenido en el tiempo, en la Comunidad de Madrid era de un ascenso uniforme, en el resto de comunidades mostraban periodos de ascenso con descensos, apreciándose algunos dientes de sierra en las gráficas (ej. Ceuta y Melilla). Tras el periodo COVID, se produce un repunte en todas ellas.
+```{r, fig.width=8, fig.asp = 1}
+lineas_ccaa <- tabla_final_miles %>%
+  filter(CCAA != "Total Nacional") %>%
+  ggplot(aes(x = Anyo, y = Cntr_Pat, group = CCAA, color = CCAA, text = paste("Año: ", Anyo, "<br>Tasa Delito: ", Cntr_Pat))) +
+  geom_line() +
+  facet_wrap(~ CCAA, scales = "free_y", ncol = 4) +
+  labs(title = "Evolución de Delitos Contra el Patrimonio por CCAA",
+       x = "Año",
+       y = "Tasa de Delitos") +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 8),
+    strip.text = element_text(size = 8),
+    panel.spacing = unit(2, "lines")
+  )
+
+ggplotly(lineas_ccaa, tooltip = "text")
+```
+
+Respecto a la relación de la tasa de delitos contra el patrimonio y la renta media,
+comprobamos que la recta en los tres casos es casi plana, con ligero ascenso en la renta baja y ligero descenso en la renta media, lo que viene a sugerirnos que no existe una relación entre renta media y delitos contra el patrimonio. Esta recta plana es mas acentuada en el caso de la relación entre la tasa de delitos contra el patrimonio y la tasa de paro, indicándonos que no existe relación entre ambas variables.
+```{r}
+custom_colors <- c("Alta" = "indianred1", "Media" = "palegreen", "Baja" = "lightskyblue")
+
+# Gráfico de renta con colores personalizados y tooltip para la correlación
+scatterplot_renta <- tabla_final_miles %>% 
+  filter(CCAA != "Total Nacional") %>% 
+  rename(
+    `Renta Neta Media por Hogar` = Rent_Net_Mh,
+    `Tasa de Delitos` = Cntr_Pat
+  ) %>% 
+  ggplot(aes(x = `Renta Neta Media por Hogar`, y = `Tasa de Delitos`, color = Rent_Net_Cat)) + 
+  geom_point() +  
+  scale_color_manual(values = custom_colors) +  
+  scale_x_continuous(trans = 'log2') +
+  geom_smooth(method = lm, se = FALSE) +
+  labs(title = "Relación entre Renta Neta Media y Delitos Contra el Patrimonio",
+       x = "Renta Neta Media por Hogar (log2)",
+       y = "Tasa de Delitos",
+       color = "Categorías") +
+  theme_minimal()
+
+# Gráfico de paro con colores personalizados y tooltip para la correlación
+scatterplot_paro <- tabla_final_miles %>% 
+  filter(CCAA != "Total Nacional") %>% 
+  rename(
+    `Tasa de Paro` = Tasa_Paro,
+    `Tasa de Delitos` = Cntr_Pat
+  ) %>% 
+  ggplot(aes(x = `Tasa de Paro`, y = `Tasa de Delitos`, color = Tasa_Paro_Cat)) + 
+  geom_point() +  
+  scale_color_manual(values = custom_colors) +  
+  scale_x_continuous(trans = 'log2') +
+  geom_smooth(method = lm, se = FALSE) +
+  labs(title = "Relación entre Tasa de Paro y Delitos Contra el Patrimonio",
+       x = "Tasa de Paro (log2)",
+       y = "Tasa de Delitos",
+       color = "Categorías") +
+  theme_minimal()
+
+
+# Convertir a gráficos interactivos con correlación en el tooltip
+plot_renta <- ggplotly(scatterplot_renta, tooltip = c("x", "y", "text"))
+plot_paro <- ggplotly(scatterplot_paro, tooltip = c("x", "y", "text"))
+
+# Crear el subplot con títulos individuales y agregar subtítulos sobre cada gráfico
+subplot(
+  plot_renta %>% layout(title = list(text = "Renta Neta Media")),
+  plot_paro %>% layout(title = list(text = "Tasa de Paro")),
+  nrows = 1,
+  shareY = TRUE,  # Compartir eje Y para consistencia
+  widths = c(0.5, 0.5)  # Ajustar proporciones de ancho
+) %>%
+  layout(
+    title = "Tasa de Delitos Contra el Patrimonio según Renta y Paro",
+    height = 500,
+    width = 1000,
+    margin = list(t = 50, b = 50, l = 50, r = 50),
+          # Subtítulo para el gráfico de renta (colocarlo encima del gráfico de renta)
+    annotations = list(
+      list(
+        x = 0.15,
+        y = 1.05,
+        text = "Renta Neta Media",  # Texto del subtítulo
+        showarrow = FALSE,
+        font = list(size = 12, color = "black"),  # Tamaño y color del texto
+        xref = "paper",  # Usar "paper" para que no dependa de los datos
+        yref = "paper",  # Usar "paper" para que no dependa de los datos
+        align = "center"
+      ),
+      # Subtítulo para el gráfico de paro (colocarlo encima del gráfico de paro)
+      list(
+        x = 0.80,
+        y = 1.05,
+        text = "Tasa de Paro",
+        showarrow = FALSE,
+        font = list(size = 12, color = "black"),  # Tamaño y color del texto
+        xref = "paper",
+        yref = "paper", 
+        align = "center"
+      )
+    )
+  )
+```
+
+#### **Delitos contra las Personas**
+Este tipo de delitos representa el 9.85 % del total de delitos, en esta categoría se engloban los delitos de homicidios, asesinatos, lesiones, etc.
+
+Cabe notar que es en la ciudades Autónomas de Ceuta y Melilla (877-1057 por cien mil) donde se registra las tasa más altas de este tipo de delitos, mientras que La Rioja es la que muestra la tasa más baja (294-454 por cien mil).
+
+Como denominador común en todas las autonomías se produce una disminución de este tipo de delitos en los años 2015 y 2016, siendo el descenso mas acusado en las comunidades de Canarias (-405 por cien mil) y Andalucía (-310 por cien mil).
+
+Posteriormente se observa que se mantiene en una línea con pocas alteraciones (antes del confinamiento del 2020) salvo en las comunidades de Islas Baleares y Aragón presentando en ambas un incremento en tasa de delito de cercano a 100 por cien mil habitantes.
+
+Asimismo en todas las comunidades se producen incrementos con tendencia ascendente, en los años post pandemia excepto, en las Ciudades Autónomas de Ceuta y Melilla.
+```{r, fig.width=8, fig.asp = 1}
+lineas_ccaa <- tabla_final_miles %>%
+  filter(CCAA != "Total Nacional") %>%
+  ggplot(aes(x = Anyo, y = Cntr_Per, group = CCAA, color = CCAA, text = paste("Año: ", Anyo, "<br>Tasa Delito: ", Cntr_Per))) +
+  geom_line() +
+  facet_wrap(~ CCAA, scales = "free_y", ncol = 4) +
+  labs(title = "Evolución de Delitos Contra las Personas por CCAA",
+       x = "Año",
+       y = "Tasa de Delitos") +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 8),
+    strip.text = element_text(size = 8),
+    panel.spacing = unit(2, "lines")
+  )
+
+ggplotly(lineas_ccaa, tooltip = "text")
+```
+
+Respecto a la relación de la tasa de delitos contra la personas y la renta media, podemos observar que es en la comunidades categorizadas como baja donde se produce una recta de tendencia ascendente y con una fuerte pendiente, de manera que la relación entre las variables es directamente proporcional, mientras que en las categorizadas como media y alta la pendiente es descendente y no muy pronunciada, indicándonos que no es una relación fuerte en esos casos.
+
+Por último respecto a la relación entre la tasa de delitos y la tasa de paro, vemos que en las tres categorías la recta es ascendente, si bien es más pronunciada en el caso de la tasa baja de paro.
+```{r}
+custom_colors <- c("Alta" = "indianred1", "Media" = "palegreen", "Baja" = "lightskyblue")
+
+# Gráfico de renta con colores personalizados y tooltip para la correlación
+scatterplot_renta <- tabla_final_miles %>% 
+  filter(CCAA != "Total Nacional") %>% 
+  rename(
+    `Renta Neta Media por Hogar` = Rent_Net_Mh,
+    `Tasa de Delitos` = Cntr_Per
+  ) %>% 
+  ggplot(aes(x = `Renta Neta Media por Hogar`, y = `Tasa de Delitos`, color = Rent_Net_Cat)) + 
+  geom_point() +  
+  scale_color_manual(values = custom_colors) +  
+  scale_x_continuous(trans = 'log2') +
+  geom_smooth(method = lm, se = FALSE) +
+  labs(title = "Relación entre Renta Neta Media y Delitos Contra las Personas",
+       x = "Renta Neta Media por Hogar (log2)",
+       y = "Tasa de Delitos",
+       color = "Categorías") +
+  theme_minimal()
+
+# Gráfico de paro con colores personalizados y tooltip para la correlación
+scatterplot_paro <- tabla_final_miles %>% 
+  filter(CCAA != "Total Nacional") %>% 
+  rename(
+    `Tasa de Paro` = Tasa_Paro,
+    `Tasa de Delitos` = Cntr_Per
+  ) %>% 
+  ggplot(aes(x = `Tasa de Paro`, y = `Tasa de Delitos`, color = Tasa_Paro_Cat)) + 
+  geom_point() +  
+  scale_color_manual(values = custom_colors) +  
+  scale_x_continuous(trans = 'log2') +
+  geom_smooth(method = lm, se = FALSE) +
+  labs(title = "Relación entre Tasa de Paro y Delitos Contra las Personas",
+       x = "Tasa de Paro (log2)",
+       y = "Tasa de Delitos",
+       color = "Categorías") +
+  theme_minimal()
+
+
+# Convertir a gráficos interactivos con correlación en el tooltip
+plot_renta <- ggplotly(scatterplot_renta, tooltip = c("x", "y", "text"))
+plot_paro <- ggplotly(scatterplot_paro, tooltip = c("x", "y", "text"))
+
+# Crear el subplot con títulos individuales y agregar subtítulos sobre cada gráfico
+subplot(
+  plot_renta %>% layout(title = list(text = "Renta Neta Media")),
+  plot_paro %>% layout(title = list(text = "Tasa de Paro")),
+  nrows = 1,
+  shareY = TRUE,  # Compartir eje Y para consistencia
+  widths = c(0.5, 0.5)  # Ajustar proporciones de ancho
+) %>%
+  layout(
+    title = "Tasa de Delitos Contra las Personas según Renta y Paro",
+    height = 500,
+    width = 1000,
+    margin = list(t = 50, b = 50, l = 50, r = 50),
+          # Subtítulo para el gráfico de renta (colocarlo encima del gráfico de renta)
+    annotations = list(
+      list(
+        x = 0.15,
+        y = 1.05,
+        text = "Renta Neta Media",  # Texto del subtítulo
+        showarrow = FALSE,
+        font = list(size = 12, color = "black"),  # Tamaño y color del texto
+        xref = "paper",  # Usar "paper" para que no dependa de los datos
+        yref = "paper",  # Usar "paper" para que no dependa de los datos
+        align = "center"
+      ),
+      # Subtítulo para el gráfico de paro (colocarlo encima del gráfico de paro)
+      list(
+        x = 0.80,
+        y = 1.05,
+        text = "Tasa de Paro",
+        showarrow = FALSE,
+        font = list(size = 12, color = "black"),  # Tamaño y color del texto
+        xref = "paper",
+        yref = "paper", 
+        align = "center"
+      )
+    )
+  )
+```
+
+
+
+#### **Delitos contra la Libertad**
+Este tipo de delitos representa el 5.77 % del total de delitos, en esta categoría se engloban los delitos de malos tratos en el ámbito familiar, pornografía, agresiones sexuales, etc.
+
+Como podemos observar es un tipo de delito en constante ascenso en todas las comunidades autónomas, ascensos que no se modificaron ni en el periodo de COVID. Como señala el [Instituto de Derecho Iberoamericano](https://idibe.org/tribuna/incidencia-del-covid-19-ambito-la-violencia-intrafamiliar/) *"uno de los efectos de este Covid-19 ha sido, sin lugar a dudas, el aumento de la violencia intrafamiliar, concepto utilizado para referirse a los malos tratos o agresiones físicas, psicológicas, sexuales o de otra índole infligidas por personas del medio familiar y dirigida generalmente a los miembros más vulnerables de la misma, niños, mujeres y ancianos. Las nuevas medidas requeridas por el Estado de Alarma han generado un cambio drástico en nuestros hábitos diarios, obligándonos a adaptarnos a una realidad social nunca imaginada hasta ahora."*
+```{r, fig.width=8, fig.asp = 1}
+lineas_ccaa <- tabla_final_miles %>%
+  filter(CCAA != "Total Nacional") %>%
+  ggplot(aes(x = Anyo, y = Cntr_Lib, group = CCAA, color = CCAA, text = paste("Año: ", Anyo, "<br>Tasa Delito: ", Cntr_Lib))) +
+  geom_line() +
+  facet_wrap(~ CCAA, scales = "free_y", ncol = 4) +
+  labs(title = "Evolución de Delitos Contra la Libertad por CCAA",
+       x = "Año",
+       y = "Tasa de Delitos") +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 8),
+    strip.text = element_text(size = 8),
+    panel.spacing = unit(2, "lines")
+  )
+
+ggplotly(lineas_ccaa, tooltip = "text")
+```
+
+Respecto a la relación de la tasa de delitos contra libertad y la renta media, comprobamos que la recta en todos los casos es ascendente y con pendientes similares. Respecto a la relación entre la tasa de delitos contra la libertas y la tasa de paro, vemos que en las tres categorías la recta es descendente, señalándonos una relación inversamente proporcional en todas las categorías.
+```{r}
+custom_colors <- c("Alta" = "indianred1", "Media" = "palegreen", "Baja" = "lightskyblue")
+
+# Gráfico de renta con colores personalizados y tooltip para la correlación
+scatterplot_renta <- tabla_final_miles %>% 
+  filter(CCAA != "Total Nacional") %>% 
+  rename(
+    `Renta Neta Media por Hogar` = Rent_Net_Mh,
+    `Tasa de Delitos` = Cntr_Lib
+  ) %>% 
+  ggplot(aes(x = `Renta Neta Media por Hogar`, y = `Tasa de Delitos`, color = Rent_Net_Cat)) + 
+  geom_point() +  
+  scale_color_manual(values = custom_colors) +  
+  scale_x_continuous(trans = 'log2') +
+  geom_smooth(method = lm, se = FALSE) +
+  labs(title = "Relación entre Renta Neta Media y Delitos Contra la Libertad",
+       x = "Renta Neta Media por Hogar (log2)",
+       y = "Tasa de Delitos",
+       color = "Categorías") +
+  theme_minimal()
+
+# Gráfico de paro con colores personalizados y tooltip para la correlación
+scatterplot_paro <- tabla_final_miles %>% 
+  filter(CCAA != "Total Nacional") %>% 
+  rename(
+    `Tasa de Paro` = Tasa_Paro,
+    `Tasa de Delitos` = Cntr_Lib
+  ) %>% 
+  ggplot(aes(x = `Tasa de Paro`, y = `Tasa de Delitos`, color = Tasa_Paro_Cat)) + 
+  geom_point() +  
+  scale_color_manual(values = custom_colors) +  
+  scale_x_continuous(trans = 'log2') +
+  geom_smooth(method = lm, se = FALSE) +
+  labs(title = "Relación entre Tasa de Paro y Delitos Contra la Libertad",
+       x = "Tasa de Paro (log2)",
+       y = "Tasa de Delitos",
+       color = "Categorías") +
+  theme_minimal()
+
+
+# Convertir a gráficos interactivos con correlación en el tooltip
+plot_renta <- ggplotly(scatterplot_renta, tooltip = c("x", "y", "text"))
+plot_paro <- ggplotly(scatterplot_paro, tooltip = c("x", "y", "text"))
+
+# Crear el subplot con títulos individuales y agregar subtítulos sobre cada gráfico
+subplot(
+  plot_renta %>% layout(title = list(text = "Renta Neta Media")),
+  plot_paro %>% layout(title = list(text = "Tasa de Paro")),
+  nrows = 1,
+  shareY = TRUE,  # Compartir eje Y para consistencia
+  widths = c(0.5, 0.5)  # Ajustar proporciones de ancho
+) %>%
+  layout(
+    title = "Tasa de Delitos Contra la Libertad según Renta y Paro",
+    height = 500,
+    width = 1000,
+    margin = list(t = 50, b = 50, l = 50, r = 50),
+          # Subtítulo para el gráfico de renta (colocarlo encima del gráfico de renta)
+    annotations = list(
+      list(
+        x = 0.15,
+        y = 1.05,
+        text = "Renta Neta Media",  # Texto del subtítulo
+        showarrow = FALSE,
+        font = list(size = 12, color = "black"),  # Tamaño y color del texto
+        xref = "paper",  # Usar "paper" para que no dependa de los datos
+        yref = "paper",  # Usar "paper" para que no dependa de los datos
+        align = "center"
+      ),
+      # Subtítulo para el gráfico de paro (colocarlo encima del gráfico de paro)
+      list(
+        x = 0.80,
+        y = 1.05,
+        text = "Tasa de Paro",
+        showarrow = FALSE,
+        font = list(size = 12, color = "black"),  # Tamaño y color del texto
+        xref = "paper",
+        yref = "paper", 
+        align = "center"
+      )
+    )
+  )
+```
+
+#### **Delitos contra la Seguridad Colectiva**
+Estos delitos representan el 3.16 % del total , en esta categoría se engloban los delitos de trafico de drogas, contra la seguridad vial entre otros.
+
+En época prepandémica (2013-2019) se observa que este tipo de delitos presentaba una tendencia descendente en todas la comunidades autónomas, siendo a partir del año 2016
+cuando comienza un repunte en las mismas. Caso aparte es la Navarra que ha mostrado
+siempre una tendencia ascendente es este periodo.
+
+Debido al confinamiento se observa que en 2020 este tipo de delito sufre una caída, para tener un repunte importante en los años posteriores, llegando el mayoría de la comunidades a tasas superiores al periodo prepandémico, excepto en las Islas Baleares, Asturias y Ceuta y Melilla donde el repunte fue menor.
+```{r, fig.width=8, fig.asp = 1}
+lineas_ccaa <- tabla_final_miles %>%
+  filter(CCAA != "Total Nacional") %>%
+  ggplot(aes(x = Anyo, y = Cntr_Segcol, group = CCAA, color = CCAA, text = paste("Año: ", Anyo, "<br>Tasa Delito: ", Cntr_Segcol))) +
+  geom_line() +
+  facet_wrap(~ CCAA, scales = "free_y", ncol = 4) +
+  labs(title = "Evolución de Delitos Contra la Seguridad Colectiva por CCAA",
+       x = "Año",
+       y = "Tasa de Delitos") +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 8),
+    strip.text = element_text(size = 8),
+    panel.spacing = unit(2, "lines")
+  )
+
+ggplotly(lineas_ccaa, tooltip = "text")
+```
+
+Respecto a la relación de la tasa de delitos contra la seguridad colectiva y la renta media, comprobamos que la recta en los tres casos es totalmente plana, en los casos de renta alta y media, por el contrario la recta es ascendente y con pendiente moderada, en el caso de la renta baja, lo que nos sugiere una posible relación entre ambas variables. En el caso de la relación con la tasa de paro, sucede algo parecido a lo anterior, rectas planas en los casos de tasas de paro media y alta, mientras que en el caso de tasa de paro baja la recta es ascendente pero con poca pendiente, lo que nos sugiere una posible relación entre ambas variables pero de carácter débil.
+```{r}
+custom_colors <- c("Alta" = "indianred1", "Media" = "palegreen", "Baja" = "lightskyblue")
+
+# Gráfico de renta con colores personalizados y tooltip para la correlación
+scatterplot_renta <- tabla_final_miles %>% 
+  filter(CCAA != "Total Nacional") %>% 
+  rename(
+    `Renta Neta Media por Hogar` = Rent_Net_Mh,
+    `Tasa de Delitos` = Cntr_Segcol
+  ) %>% 
+  ggplot(aes(x = `Renta Neta Media por Hogar`, y = `Tasa de Delitos`, color = Rent_Net_Cat)) + 
+  geom_point() +  
+  scale_color_manual(values = custom_colors) +  
+  scale_x_continuous(trans = 'log2') +
+  geom_smooth(method = lm, se = FALSE) +
+  labs(title = "Relación entre Renta Neta Media y Delitos Contra la Seguridad Colectiva",
+       x = "Renta Neta Media por Hogar (log2)",
+       y = "Tasa de Delitos",
+       color = "Categorías") +
+  theme_minimal()
+
+# Gráfico de paro con colores personalizados y tooltip para la correlación
+scatterplot_paro <- tabla_final_miles %>% 
+  filter(CCAA != "Total Nacional") %>% 
+  rename(
+    `Tasa de Paro` = Tasa_Paro,
+    `Tasa de Delitos` = Cntr_Segcol
+  ) %>% 
+  ggplot(aes(x = `Tasa de Paro`, y = `Tasa de Delitos`, color = Tasa_Paro_Cat)) + 
+  geom_point() +  
+  scale_color_manual(values = custom_colors) +  
+  scale_x_continuous(trans = 'log2') +
+  geom_smooth(method = lm, se = FALSE) +
+  labs(title = "Relación entre Tasa de Paro y Delitos Contra la Seguridad Colectiva",
+       x = "Tasa de Paro (log2)",
+       y = "Tasa de Delitos",
+       color = "Categorías") +
+  theme_minimal()
+
+
+# Convertir a gráficos interactivos con correlación en el tooltip
+plot_renta <- ggplotly(scatterplot_renta, tooltip = c("x", "y", "text"))
+plot_paro <- ggplotly(scatterplot_paro, tooltip = c("x", "y", "text"))
+
+# Crear el subplot con títulos individuales y agregar subtítulos sobre cada gráfico
+subplot(
+  plot_renta %>% layout(title = list(text = "Renta Neta Media")),
+  plot_paro %>% layout(title = list(text = "Tasa de Paro")),
+  nrows = 1,
+  shareY = TRUE,  # Compartir eje Y para consistencia
+  widths = c(0.5, 0.5)  # Ajustar proporciones de ancho
+) %>%
+  layout(
+    title = "Tasa de Delitos Contra la Seguridad Colectiva según Renta y Paro",
+    height = 500,
+    width = 1000,
+    margin = list(t = 50, b = 50, l = 50, r = 50),
+          # Subtítulo para el gráfico de renta (colocarlo encima del gráfico de renta)
+    annotations = list(
+      list(
+        x = 0.15,
+        y = 1.05,
+        text = "Renta Neta Media",  # Texto del subtítulo
+        showarrow = FALSE,
+        font = list(size = 12, color = "black"),  # Tamaño y color del texto
+        xref = "paper",  # Usar "paper" para que no dependa de los datos
+        yref = "paper",  # Usar "paper" para que no dependa de los datos
+        align = "center"
+      ),
+      # Subtítulo para el gráfico de paro (colocarlo encima del gráfico de paro)
+      list(
+        x = 0.80,
+        y = 1.05,
+        text = "Tasa de Paro",
+        showarrow = FALSE,
+        font = list(size = 12, color = "black"),  # Tamaño y color del texto
+        xref = "paper",
+        yref = "paper", 
+        align = "center"
+      )
+    )
+  )
+```
+
+#### **Resto de delitos**
+Este grupo esta formado por los delitos contra la Administración Justicia, contra el Orden Público, Falsedades, contra la Administración Pública y otros delitos no tipificados, representa el 4.71% del total de delitos.
+
+En este caso, salvo en las comunidades de Cataluña, País Vasco y Ceuta y Melilla , en el resto se aprecia que siguen un patrón ascendente no viéndose gran influencia del periodo pandémico en este tipo de delitos. Lectura diferente merece Ceuta y Melilla pues ya desde el 2019 presentan un descenso en este tipo de delitos que continuo hasta el 2022 incluido.
+```{r, fig.width=8, fig.asp = 1}
+lineas_ccaa <- tabla_final_miles %>%
+  filter(CCAA != "Total Nacional") %>%
+  ggplot(aes(x = Anyo, y = Rest_Del, group = CCAA, color = CCAA, text = paste("Año: ", Anyo, "<br>Tasa Delito: ", Rest_Del))) +
+  geom_line() +
+  facet_wrap(~ CCAA, scales = "free_y", ncol = 4) +
+  labs(title = "Evolución del Resto de Delitos por CCAA",
+       x = "Año",
+       y = "Tasa de Delitos") +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 8),
+    strip.text = element_text(size = 8),
+    panel.spacing = unit(2, "lines")
+  )
+
+ggplotly(lineas_ccaa, tooltip = "text")
+```
+
+Respecto a la relación de la tasa de delitos y la renta media, podemos observar que es en la comunidades categorizadas como baja donde se produce una recta de tendencia ascendente y con una fuerte pendiente, de manera que la relación entre las variables es directamente proporcional, mientras que en las categorizadas como media y alta la pendiente es prácticamente plana lo que viene a indicarnos la nula relación entre estas categorías y los delitos.
+
+Por último respecto a la relación entre la tasa de delitos y la tasa de paro, vemos rectas planas en los casos de tasas de paro media y alta, mientras que en el caso de tasa de paro baja la recta es ascendente pero con poca pendiente, lo que nos sugiere una posible relación entre ambas variables pero de carácter débil.
+```{r}
+custom_colors <- c("Alta" = "indianred1", "Media" = "palegreen", "Baja" = "lightskyblue")
+
+scatterplot_renta <- tabla_final_miles %>% 
+  filter(CCAA != "Total Nacional") %>% 
+  rename(
+    `Renta Neta Media por Hogar` = Rent_Net_Mh,
+    `Tasa de Delitos` = Rest_Del
+  ) %>% 
+  ggplot(aes(x = `Renta Neta Media por Hogar`, y = `Tasa de Delitos`, color = Rent_Net_Cat)) + 
+  geom_point() +  
+  scale_color_manual(values = custom_colors) +  
+  scale_x_continuous(trans = 'log2') +
+  geom_smooth(method = lm, se = FALSE) +
+  labs(title = "Relación entre Renta Neta Media y Resto de Delitos",
+       x = "Renta Neta Media por Hogar (log2)",
+       y = "Tasa de Delitos",
+       color = "Categorías") +
+  theme_minimal()
+
+# Gráfico de paro con colores personalizados y tooltip para la correlación
+scatterplot_paro <- tabla_final_miles %>% 
+  filter(CCAA != "Total Nacional") %>% 
+  rename(
+    `Tasa de Paro` = Tasa_Paro,
+    `Tasa de Delitos` = Rest_Del
+  ) %>% 
+  ggplot(aes(x = `Tasa de Paro`, y = `Tasa de Delitos`, color = Tasa_Paro_Cat)) + 
+  geom_point() +  
+  scale_color_manual(values = custom_colors) +  
+  scale_x_continuous(trans = 'log2') +
+  geom_smooth(method = lm, se = FALSE) +
+  labs(title = "Relación entre Tasa de Paro y Resto de Delitos",
+       x = "Tasa de Paro (log2)",
+       y = "Tasa de Delitos",
+       color = "Categorías") +
+  theme_minimal()
+
+
+# Convertir a gráficos interactivos con correlación en el tooltip
+plot_renta <- ggplotly(scatterplot_renta, tooltip = c("x", "y", "text"))
+plot_paro <- ggplotly(scatterplot_paro, tooltip = c("x", "y", "text"))
+
+# Crear el subplot con títulos individuales y agregar subtítulos sobre cada gráfico
+subplot(
+  plot_renta %>% layout(title = list(text = "Renta Neta Media")),
+  plot_paro %>% layout(title = list(text = "Tasa de Paro")),
+  nrows = 1,
+  shareY = TRUE,  # Compartir eje Y para consistencia
+  widths = c(0.5, 0.5)  # Ajustar proporciones de ancho
+) %>%
+  layout(
+    title = "Tasa del Resto de Delitos según Renta y Paro",
+    height = 500,
+    width = 1000,
+    margin = list(t = 50, b = 50, l = 50, r = 50),
+          # Subtítulo para el gráfico de renta (colocarlo encima del gráfico de renta)
+    annotations = list(
+      list(
+        x = 0.15,
+        y = 1.05,
+        text = "Renta Neta Media",  # Texto del subtítulo
+        showarrow = FALSE,
+        font = list(size = 12, color = "black"),  # Tamaño y color del texto
+        xref = "paper",  # Usar "paper" para que no dependa de los datos
+        yref = "paper",  # Usar "paper" para que no dependa de los datos
+        align = "center"
+      ),
+      # Subtítulo para el gráfico de paro (colocarlo encima del gráfico de paro)
+      list(
+        x = 0.80,
+        y = 1.05,
+        text = "Tasa de Paro",
+        showarrow = FALSE,
+        font = list(size = 12, color = "black"),  # Tamaño y color del texto
+        xref = "paper",
+        yref = "paper", 
+        align = "center"
+      )
+    )
+  )
+```
+
+### **Análisis de atributos**
+Tras haber llevado a cabo un análisis exploratorio y relacional de las principales variables del conjunto de datos, se procede a profundizar en el análisis de atributos mediante Componentes Principales (PCA). Haciendo uso de este método se facilita la interpretación de los factores que influyen en los delitos registrados en las Comunidades Autónomas.
+
+En este caso, se trabaja directamente con todas las variables numéricas del conjunto de datos, considerando su evolución año a año. Cada registro corresponde a una combinación única de Comunidad Autónoma y año, lo que permite capturar tanto las diferencias regionales como los cambios temporales en los atributos analizados.
+
+```{r}
+pca <- tabla_final_miles %>%
+  filter(CCAA != "Total Nacional") %>% 
+  mutate(ID = paste(CCAA, Anyo, sep = "_")) %>% 
+  dplyr::select(-Anyo) %>% 
+  column_to_rownames(var = "ID") %>% 
+  dplyr::select_if(is.numeric) %>%
+  prcomp(scale = TRUE)
+```
+
+#### **Matriz de correlación**
+En primer lugar, se realiza una matriz de correlación. Una tabla que muestra los coeficientes de correlación entre pares de variables de un conjunto de datos. Cada celda de la matriz representa la relación entre dos variables específicas:
+
+- **Valores cercanos a +1**: Indican una fuerte correlación positiva (cuando una variable aumenta, la otra también tiende a aumentar).
+
+- **Valores cercanos a -1**: Indican una fuerte correlación negativa (cuando una variable aumenta, la otra tiende a disminuir).
+
+- **Valores cercanos a 0**: Indican una correlación débil o inexistente.
+
+```{r, fig.width=8, fig.asp = 0.7 }
+  tabla_final_miles %>%
+  filter(CCAA != "Total Nacional") %>% 
+    dplyr::select_if(is.numeric) %>% 
+    cor(use = "complete.obs") %>% 
+    hchart()
+```
+
+La gráfica reafirma que, como se ha nombrado en repetidas ocasiones anteriormente, la relación entre la tasa de paro y la renta neta media por hogar con todos los tipos de delitos es baja, indicando que aunque puede haber una conexión entre el desempleo y ciertos tipos de delitos, esta relación es débil.
+
+Por otro lado, una relación importante, como es la renta neta media y los delitos contra el patrimonio también es baja, aunque se observa una tendencia positiva, sugieriendo que, en las regiones con mayor nivel de renta, la incidencia de este tipo de delitos tiende a ser ligeramente mayor Sin embargo,no es lo suficientemente alta como para considerarla significativa.
+
+Como era de esperarse, existe tanto correlaciónes positiva como negativas entre la población y la mayoría de las categorías de delitos. Esto se debe probablemente a que las áreas más pobladas registran más delitos en términos absolutos, simplemente debido al mayor número de población y de recursos. Sin embargo, este patrón no implica necesariamente una mayor tendencia al delito en las zonas densamente pobladas, como es el caso de las Islas Baleares.
+
+Además, se detecta una correlación negativa entre la renta neta media y la tasa de paro, lo que refleja un patrón evidente, las regiones con mayores niveles de renta suelen tener menores tasas de desempleo. Sin embargo, la relación entre ambas es débil.
+
+Finalmente, algunas variables, como los delitos contra la seguridad colectiva o contra la libertad, presentan correlaciones muy bajas con los factores de renta y desempleo, sugiriendo que estos tipos de delitos están menos influidos por factores económicos y pueden depender más de aspectos contextuales, sociales o normativos propios de cada región.
+
+#### **Componentes principales**
+Como se dijo anteriormente, para el análisis de atributos se hace uso de las Componentes Principales. El Análisis de Componentes Principales (PCA) es una técnica que transforma un conjunto de variables originales en un nuevo conjunto de variables, mediante combinaciones lineales de las variables iniciales. El objetivo de PCA es identificar las combinaciones que maximicen la variabilidad de los nuevos conjuntos de variables, ordenando los componentes de mayor a menor variabilidad. Así, el primer componente explica la mayor parte de la variabilidad presente en los datos, mientras que el último componente refleja la menor cantidad de variabilidad. Los componentes que no aportan variabilidad significativa se eliminan, lo que reduce la dimensionalidad del conjunto de datos y retiene solo los componentes más relevantes. En resumen, PCA permite simplificar los datos, destacando los patrones más importantes y eliminando la redundancia de la información.
+
+```{r, fig.width = 8, fig.asp = 0.9}
+var_ex <- tibble(
+    label = fct_inorder(paste("PC", 1:length(pca$sdev))),
+    varPercent = pca$sdev^2 / sum(pca$sdev^2) * 100
+  ) %>%  
+    ggplot(aes(x = label, y = varPercent, text = paste0("Label: ", label, "<br>varPercent: ", round(varPercent, 7)))) +
+    geom_bar(stat = "identity") +
+    labs(
+      x = "Componentes Principales",
+      y = "Porcentaje de Varianza Explicada"
+    ) +
+    geom_text(aes(label = paste0(round(varPercent, digits = 1), "%")),
+              size = 3,
+              colour = "blue",
+              nudge_y = 1)
+
+ggplotly(var_ex, tooltip = "text")
+```
+La primera componente explica un 39.6% de la variabilidad total, lo que significa que captura una gran parte de la información del conjunto de datos. La segunda componente aporta un 25.3%, lo que nos lleva a un total acumulado de 64.9%. Con estas dos componentes podemos representar una parte importante de los datos. Al incluir la tercera componente, que explica un 13.8%, llegamos al 82.5% de la variabilidad, lo que ya cubre la mayoría del conjunto de datos.
+
+Si utilizamos el criterio de quedarnos con las que expliquen como mínimo el 2% nos quedamos con las 6 componentes primeras, reduciendo de 9 variables originales a 6 sin afectar a la información global de los atributos originales.
+
+#### **Gráfica de dispersión de las dos primeras componentes**
+```{r}
+pca2 <- tabla_final_miles %>%
+  filter(CCAA != "Total Nacional", Anyo %in% c(2020:2022)) %>% 
+  mutate(ID = paste(CCAA, Anyo, sep = "_")) %>% 
+  dplyr::select(-Anyo, -Tot_Del) %>% 
+  column_to_rownames(var = "ID") %>% 
+  dplyr::select_if(is.numeric) %>%
+  prcomp(scale = TRUE)
+
+ hchart(pca2,choices=c(1,2))
+```
+
+La gráfica de dispersión de las dos primeras componentes principales (PC1 y PC2) se muestra para el período 2020-2022. Este periodo fue seleccionado para capturar dinámicas recientes y actuales, evitando eliminar patrones con datos más antiguos.
+
+La PC1 está relacionada principalmente con los distintos tipos de delitos, mientras que la PC2 está influenciada por la población y la renta neta media por hogar, y su interacción con delitos como los contra el patrimonio. Se observa que, a medida que se alejan más hacia el eje Y, factores como la población y la renta adquieren mayor relevancia. Por otro lado, la tasa de paro se encuentra orientada en un ángulo donde influye casi por igual a ambas componentes.
+
+En cuanto a las regiones, Ceuta y Melilla destacan por su peso relativo en ciertos delitos. Por el contrario, Extremadura aparece desplazada hacia la izquierda, reflejando su menor densidad y baja incidencia delictiva. Baleares y Canarias ocupan posiciones más moderadas, en línea con su contexto económico y poblacional.
+
+---
+
+## **Cuadro de Mandos**
+El cuadro de mandos es una herramienta interactiva y dinámica desarrollada con la librería Shiny y diseñada con flexboard para facilitar la visualización y el análisis de datos relacionados con la criminalidad y factores socioeconómicos en España. Organizado en cinco secciones principales, permite explorar información clave de forma intuitiva:
+
+1. **Inicio**
+Una introducción al cuadro de mandos que incluye un texto descriptivo sobre los datos y un mapa coroplético interactivo que muestra una pequeña introducción al cuadro de mandos, con un mapa coroplético interactivo.
+
+2. **Tendencias Nacionales**
+Permite analizar la evolución temporal de los delitos a nivel nacional mediante gráficos de líneas o mapas de calor. Los datos se pueden visualizar en valores absolutos o ajustados por cada 100,000 habitantes según el tipo de delito seleccionado.
+
+3. **Análisis por Región**
+Similar a las tendencias nacionales, pero centrado en las CCAA. Además, incluye una tabla detallada que permite explorar todos los datos de forma interactiva.
+
+4. **Análisis de Atributos**
+Sección dedicada a explorar la correlación entre diferentes indicadores delictivos y socioeconómicos. Los análisis están basados en tasas ajustadas por cada 100,000 habitantes para garantizar una comparación uniforme.
+
+5. **Comparaciones de Atributos**
+Permite visualizar relaciones entre variables a través de diagramas de dispersión con rectas de regresión. Como en el análisis de atributos, los datos están normalizados por cada 100,000 habitantes, siguiendo la coherencia del proyecto.
+
+El cuadro de mandos y todos los ficheros necesarios para su ejecución están subidos a un servidor de la Universidad de Las Palmas de Gran Canaria, de modo que se pueda acceder teniendo únicamente la url. Así que para poder ver este recurso haga click [aquí](http://10.22.143.222:3838/sample-apps/a2511/CuadroDeMandos.Rmd).
+
+
+---
+
+## **Conclusiones y trabajos futuros**
+### **Resultados y Conclusiones Obtenidas**
+El análisis se basó en un conjunto de datos que, aunque presentaba algunas limitaciones, fue lo representativo para alcanzar los objetivos propuestos. Uno de ellos era las tendencias de criminalidad en España durante los años 2013-2022, relacionandolo con factores socioeconómicos como la renta y el paro.
+
+En cuanto al primer objetivo, el análisis reveló una tendencia general de descenso en la criminalidad en los primeros años del período (2013-2015), seguida de un repunte a partir de 2016 hasta 2019. Esta subida se atribuye a diversos factores sociales y económicos. Sin embargo, la pandemia de 2020 provocó una caída en los delitos, principalmente debido a las restricciones de movilidad. A partir de 2021, los delitos comenzaron a aumentar nuevamente, con énfasis en los delitos contra las personas y la libertad, relacionados en parte con el impacto social de la crisis sanitaria.
+
+Respecto al segundo objetivo, se observó una relación baja entre las tasas de criminalidad y los factores socieconómicos propuestos, renta y paro. En regiones con alta renta, los delitos contra el patrimonio mostraron una disminución, mientras que las áreas con altos niveles de desempleo vieron un aumento en los delitos. Esto sugiere que el contexto económico juega un papel importante, en conjunto con otra serie de factores.
+
+Los resultados también señalaron que la estacionalidad en los delitos, especialmente los relacionados con el patrimonio, se vio afectada por las restricciones sociales derivadas de la pandemia, lo que alteró las tendencias observadas en años anteriores. Además, se vió que las comunidades autónomas con características socioeconómicas similares, como Madrid y Cataluña, presentaron patrones de criminalidad similares.
+
+Este estudio destaca la importancia de los datos a largo plazo para entender las variaciones de la criminalidad, especialmente en contextos como el vivido durante la pandemia. Los resultados subrayan la necesidad de políticas públicas que consideren tanto los factores socioeconómicos como los eventos inesperados, para diseñar medidas preventivas más efectivas y garantizar la seguridad de la población.
+
+Finalmente, los resultados obtenidos no solo aportan conocimiento sobre las tendencias de delicuencia, sino que también proporcionan evidencia valiosa para la formulación de políticas públicas. En un contexto global, los estudios como este son fundamentales para anticipar posibles escenarios y fomentar un enfoque preventivo en la lucha contra la delicuencia
+
+### **Grado de Consecuión de los Objetivos**
+En el inicio del presente análisis se plantearon dos objetivos principales, resumidos de la siguiente manera:
+
+1. Analizar las tendencias de delicuencia en España durante los años 2013-2022.
+
+2. Observar la relación de la delicuencia con factores socioeconómicos como la renta y el paro.
+
+Ambos objetivos han sido alcanzados de manera satisfactoria. El análisis permitió identificar patrones claros en la evolución de la delincuencia, destacando una disminución inicial seguida de un repunte antes de la pandemia de 2020, la cual generó una caída significativa en los delitos debido a las restricciones de movilidad. A partir de 2021, se observó una recuperación de los niveles delictivos.
+
+En cuanto al segundo objetivo, se detectó una relación débil entre los factores socioeconómicos analizados y las tasas de criminalidad, aunque se identificaron algunas tendencias relevantes, como el mayor impacto de los delitos contra el patrimonio en áreas de alta renta y el incremento de delitos en zonas con mayor desempleo. Estos resultados sugieren que, aunque la renta y el paro influyen, existen otros factores que también juegan un papel clave en las dinámicas delictivas.
+
+En conjunto, el análisis proporciona una visión comprensiva de las tendencias delictivas en España y su relación con el contexto socioeconómico, sentando las bases para estudios más detallados y la formulación de políticas públicas efectivas.
+
+### **Posibles extensiones**
+Este análisis puede ampliarse de manera significativa incorporando otros factores socioeconómicos que podrían influir en los niveles de delicuencia, enriqueciendo así las conclusiones y permitiendo obtener una visión más completa de las dinámicas delictivas. Entre las posibles extensiones, destaca la inclusión de variables como la tasa de turismo, que podría ser especialmente relevante en regiones con alta afluencia de visitantes, como las Islas Baleares o Canarias, donde el turismo masivo puede generar tanto oportunidades económicas como un incremento en ciertos tipos de delitos, especialmente relacionados con robos, hurtos o vandalismo.
+
+Asimismo, se podrían incluir indicadores vinculados a la educación, como el nivel medio de estudios alcanzado o las tasas de abandono escolar. Diversos estudios sugieren que una menor formación académica puede estar correlacionada con mayores tasas de criminalidad en ciertas áreas. Además, sería interesante analizar si existen diferencias significativas en los patrones de delincuencia según si las zonas son predominantemente rurales o urbanas, dado que las áreas urbanas suelen concentrar mayor población y actividad económica, factores asociados con un mayor número de delitos.
+
+Otro aspecto importante sería incorporar datos sobre delitos condenados, diferenciándolos de los delitos registrados. Esto permitiría analizar la eficacia del sistema judicial y el impacto de las condenas en las tasas de reincidencia. Comparar los delitos registrados con los condenados también ayudaría a evaluar posibles sesgos en la denuncia de delitos según las regiones o contextos socioeconómicos.
+
+Finalmente, podría ser útil analizar la influencia de políticas públicas y medidas de seguridad implementadas por cada comunidad autónoma. Por ejemplo, evaluar si existe una relación entre el gasto público en seguridad y justicia y los niveles de criminalidad, así como estudiar el impacto de iniciativas específicas como programas de prevención o aumento de efectivos policiales [Martínez Espasa (2016)](https://roderic.uv.es/items/c641324b-0767-4fe4-b02c-20666c6fd9b6).

@@ -1,0 +1,730 @@
+---
+title: "Tendencias Delictivas y Socioeconomía en España (2013-2022)"
+output: flexdashboard::flex_dashboard
+runtime: shiny
+---
+
+
+```{r global, include=FALSE}
+library(openxlsx)
+library(dplyr)
+library(ggplot2)
+library(scales)
+library(tidyr)
+library(RColorBrewer)
+library(lubridate)
+library(plotly)
+library(geojsonio)
+library(leaflet)
+library(fpp3)
+library(tidyverse)
+library(highcharter)
+library(shinydashboard)
+library(datasets)
+library(MASS)
+library(sp)
+
+# Evitar errores al hacer el box-cox en shiny
+pdf(file = NULL)
+
+# Cargar funciones adicionales
+source("utilidades.R")
+```
+
+
+```{r,echo=FALSE}
+knitr::opts_chunk$set(
+  warning = FALSE,
+  message = FALSE,
+  cache=FALSE,
+  echo=FALSE
+)
+```
+
+
+```{r} 
+# Datos que usaremos
+tabla_final <- read.xlsx('tabla_final.xlsx', sheet = 1)
+tabla_final_miles <- read.xlsx('tabla_final_miles.xlsx', sheet = 1)
+
+
+# Datos sobre el mapa
+ccaa.geoj <- geojsonio::geojson_read('https://ctim.es/AEDV/data/geo_spain_autonomias.geojson',  what = "sp")
+geoj_ti <- ccaa.geoj %>%
+  as_tibble()
+
+map_data_miles <- read.xlsx('tabla_final_miles_mapa.xlsx', sheet = 1)
+map_data <- read.xlsx('tabla_final_mapa.xlsx', sheet = 1)
+
+
+# Transformacion de datos
+tabla_final_miles_longer <- read.xlsx('tabla_final_miles.xlsx', sheet = 1) %>% 
+    pivot_longer(c(Tot_Del:Rest_Del), names_to = "TipoDelito", values_to = "Values")
+
+tabla_final_longer <- tabla_final %>% 
+  pivot_longer(c(Tot_Del:Rest_Del), names_to = "TipoDelito", values_to = "Values")
+```
+
+Inicio
+================================================================================
+```{r}
+# Título y descripción explicativa
+tags$h1("Tendencias Delictivas y Factores Socioeconómicos en España (2013-2022)", 
+        style = "font-size: 36px; font-weight: bold; text-align: center; color: #003366; margin-bottom: 20px;")
+tags$p("Este cuadro de mandos interactivo ofrece una visión completa de las tendencias delictivas y su relación con factores socioeconómicos en las distintas Comunidades Autónomas de España durante el periodo 2013-2022. A través de gráficos y análisis dinámicos, podrás explorar la evolución de los delitos, la renta media por hogar y la tasa de paro en cada región, identificando patrones y diferencias significativas. El objetivo es proporcionar herramientas para comprender mejor las dinámicas de criminalidad en un contexto económico y social.",
+       style = "font-size: 18px; text-align: justify; margin: 0px 25px 30px 25px; color: #444444; line-height: 1.5;")
+# Resumen de Indicadores Clave
+tags$h2("Resumen de Indicadores Clave", style = "font-size: 28px; color: #003366; margin-top: 40px; text-align: center;")
+
+div(
+  style = "display: flex; justify-content: space-around; flex-wrap: wrap; margin-bottom: 40px;",
+  div(
+    style = "border: 2px solid #003366; border-radius: 10px; padding: 20px; width: 30%; background-color: #f0f8ff; box-shadow: 2px 2px 6px rgba(0,0,0,0.2); margin: 10px;",
+    tags$h3("Tendencia de Delitos", style = "font-size: 22px; font-weight: bold; color: #003366; text-align: center;"),
+    tags$p("Evolución total de los delitos registrados entre 2013-2022, proporcionando una visión general de las tendencias de criminalidad en España.", 
+           style = "font-size: 16px; color: #555555; text-align: center;"),
+    plotOutput("metric_tendencia_delitos", height = "80px")
+  ),
+  div(
+    style = "border: 2px solid #003366; border-radius: 10px; padding: 20px; width: 30%; background-color: #f0f8ff; box-shadow: 2px 2px 6px rgba(0,0,0,0.2); margin: 10px;",
+    tags$h3("Media de Renta por Hogar", style = "font-size: 22px; font-weight: bold; color: #003366; text-align: center;"),
+    tags$p("Promedio nacional de renta por hogar durante el periodo analizado, permitiendo observar cómo influye en los niveles de criminalidad regional.", 
+           style = "font-size: 16px; color: #555555; text-align: center;"),
+    plotOutput("metric_renta_media", height = "80px")
+  ),
+  div(
+    style = "border: 2px solid #003366; border-radius: 10px; padding: 20px; width: 30%; background-color: #f0f8ff; box-shadow: 2px 2px 6px rgba(0,0,0,0.2); margin: 10px;",
+    tags$h3("Relación entre Paro y Criminalidad", style = "font-size: 22px; font-weight: bold; color: #003366; text-align: center;"),
+    tags$p("Evaluación de cómo la tasa de paro afecta a los índices de criminalidad en las diferentes comunidades autónomas de España.", 
+           style = "font-size: 16px; color: #555555; text-align: center;"),
+    plotOutput("metric_relacion_paro_criminalidad", height = "80px")
+  )
+)
+
+# Mapa interactivo con input flotante
+div(
+  style = "border: 2px solid #003366; border-radius: 10px; padding: 0; margin: 0px 25px 30px 25px; background-color: #f8f9fa; box-shadow: 2px 2px 6px rgba(0,0,0,0.2); position: relative;",
+  leaflet::leafletOutput("mapa_delitos_renta", height = "600px"),
+  
+  # Input flotante para el modo de visualización
+  absolutePanel(
+    id = "input_flotante",
+    class = "panel panel-default",
+    top = 10, left = 10, width = 250,
+    draggable = TRUE,
+    style = "background-color: white; padding: 10px; border-radius: 5px; box-shadow: 2px 2px 6px rgba(0,0,0,0.2); z-index: 1000;",
+    
+    # Selector de modo de visualización
+    radioButtons(
+      inputId = "modo_visualizacion_mapa",
+      label = "Modo de visualización",
+      choices = c( "Por cada 100,000 habitantes" = "normalizado", "Valores Absolutos" = "absolutos"),
+      selected = "normalizado",
+      inline = FALSE
+    )
+  )
+)
+
+output$mapa_delitos_renta <- renderLeaflet({
+  # Selección dinámica basada en el modo de visualización
+  map_data_mod <- reactive({
+    if (input$modo_visualizacion_mapa == "normalizado") {
+      map_data <- map_data_miles # Tabla preprocesada para 100,000 habitantes
+    } else {
+      map_data <- map_data # Tabla con valores absolutos
+    }
+    map_data
+  })
+  
+  # Crear etiquetas dinámicas para el mapa
+  etiquetas <- paste(
+    map_data_mod()$NAME_1,
+    "<br>Nivel de Renta: ", map_data_mod()$Rent_Net_Cat,
+    "<br>Valor Delitos: ", round(map_data_mod()$Tot_Del, 2)
+  ) %>% lapply(htmltools::HTML)
+  
+  # Crear la paleta de colores dinámica
+  pal <- colorQuantile("YlOrRd", map_data_mod()$Tot_Del, n = 5)
+  
+  # Renderizar el mapa
+  ccaa.geoj %>%
+    leaflet() %>%
+    addTiles() %>%
+    addPolygons(
+      fillColor = ~pal(map_data_mod()$Tot_Del),
+      weight = 2,
+      opacity = 1,
+      color = "white",
+      dashArray = "3",
+      fillOpacity = 0.7,
+      highlightOptions = highlightOptions(
+        weight = 2,
+        color = "black",
+        dashArray = "",
+        fillOpacity = 0.8,
+        bringToFront = TRUE
+      ),
+      label = etiquetas
+    ) %>%
+    addLegend(
+      "bottomleft",
+      pal = pal,
+      values = map_data_mod()$Tot_Del,
+      title = ifelse(input$modo_visualizacion_mapa == "normalizado", 
+                     "Por 100,000 hab.", 
+                     "Valores Absolutos"),
+      opacity = 1
+    )
+})
+
+```
+
+Tendencias Nacionales
+================================================================================
+
+.Column{.sidebar data-width=230}
+--------------------------------------------------
+```{r}
+# Primer input
+selectInput(
+  "Tip_Del",
+  label = "Tipo de delito",
+  choices = sort(unique(c(tabla_final_longer$TipoDelito))),
+  selected = "Tot_Del",
+  multiple = TRUE
+)
+```
+
+```{r}
+# Segundo Input
+selectInput(
+  "Anyo_Inicio",
+  label = "Fecha inicio",
+  choices = unique(sort(tabla_final_longer$Anyo)),
+  selected = 2013
+)
+```
+
+```{r}
+# Tercer Input
+selectInput(
+  "Anyo_Final",
+  label = "Fecha fin",
+  choices = unique(sort(tabla_final_longer$Anyo)),
+  selected = 2022
+)
+```
+
+```{r}
+# Cuarto input
+radioButtons(
+      inputId = "modo_visualizacion_1",
+      label = "Modo de visualización",
+      choices = c("Por cada 100,000 habitantes" = "normalizado", "Valores Absolutos" = "absolutos"),
+      selected = "normalizado",
+      inline = FALSE
+    )
+```
+
+```{r}
+# Funcion reactiva adaptada
+inputs.processing1 <- reactive({
+  # Selecciona la tabla en función del modo de visualización
+  tb <- if (input$modo_visualizacion_1 == "normalizado") {
+    tabla_final_miles_longer
+  } else {
+    tabla_final_longer
+  }
+  
+  # Aplica los filtros a la tabla seleccionada
+  tb <- tb %>%
+    filter(
+      TipoDelito %in% input$Tip_Del,
+      Anyo >= input$Anyo_Inicio,
+      Anyo <= input$Anyo_Final
+    ) %>%
+    mutate(Anyo = as.factor(Anyo))
+  
+  return(tb)
+})
+
+```
+
+Column{.tabset data-width=800}
+--------------------------------------------------
+
+### Evolución
+
+```{r}
+renderHighchart({
+  datos <- inputs.processing1() %>% 
+    filter(CCAA == "Total Nacional")
+  
+  datos %>% 
+  hchart("line", hcaes(x = Anyo, y = Values, group = TipoDelito)) %>%
+  hc_xAxis(title = list(text = "Año")) %>%
+  hc_yAxis(title = list(text = "Delitos Registrados"))
+})
+```
+
+### Mapa de Calor (según Tipo Delito)
+```{r}
+renderPlotly({
+  datos <- inputs.processing1() %>%
+    filter(CCAA == "Total Nacional") %>%
+    group_by(Anyo, TipoDelito) %>%
+    summarize(Delitos_Total = sum(Values, na.rm = TRUE), .groups = 'drop') %>%
+    group_by(TipoDelito) %>%
+    mutate(Delitos_Normalizados = scales::rescale(Delitos_Total, to = c(0, 1))) %>%
+    ungroup()
+  
+  
+  # Crea el heatmap con ggplot2
+  datos %>% 
+    ggplot(aes(x = Anyo, y = TipoDelito, fill = Delitos_Normalizados, 
+      text = paste(
+        "Año:", Anyo,
+        "<br>Tipo de Delito:", TipoDelito,
+        "<br>Valor Real:", round(Delitos_Total, 2),
+        "<br>Valor Normalizado:", round(Delitos_Normalizados, 2)
+      ))) +
+    geom_tile(color = "lightblue", lwd = 0.5, linetype = 1) +
+    scale_fill_gradientn(name = "Valor Normalizado", colors = brewer.pal(9, "YlOrRd")) +
+    theme_minimal() +
+    labs(x="Año", 
+       y = "Tipo de Delito"
+       )
+  
+  ggplotly(tooltip = "text")
+})
+```
+
+Column
+--------------------------------------------------------------------------------
+
+
+### Variables
+
+En el análisis cuadro de mandos, algunas variables tienen nombres abreviados que pueden resultar difíciles de interpretar a primera vista. A continuación, se ofrece una tabla con la descripción completa de cada tipo de delito.
+
+```{r}
+tabla <- data.frame(
+  Variable = c("Cntr_Lib", "Cntr_Pat", "Cntr_Per",  
+               "Cntr_Segcol", "Rest_Del", "Tot_Del"),
+  Descripción = c("Contra la libertad", 
+                  "Contra el patrimonio",
+                  "Contra las personas",
+                  "Contra la seguridad colectiva", 
+                  "Resto de Delitos",
+                  "Total de Delitos")
+)
+```
+
+```{r}
+renderTable({
+  tabla
+}, 
+striped = TRUE, 
+hover = TRUE, 
+spacing = "m", 
+width = "80%", 
+align = "c")
+```
+
+
+Análisis por Región
+================================================================================
+
+Column{.sidebar data-width=230}
+-------------------------------------------------------------------------------
+```{r}
+# Primer input
+selectInput(
+  "CCAA",
+  label = "Comunidad Autónoma",
+  choices = sort(unique(c(tabla_final_longer$CCAA[tabla_final_longer$CCAA != "Total Nacional"]))),
+  selected = sort(unique(c(tabla_final_longer$CCAA[tabla_final_longer$CCAA != "Total Nacional"]))),
+  multiple = TRUE
+)
+```
+
+```{r}
+# Segundo Input
+selectInput(
+  "Anyo_Inicio_2",
+  label = "Fecha inicio",
+  choices = unique(sort(tabla_final_longer$Anyo)),
+  selected = 2013
+)
+```
+
+```{r}
+# Tercer Input
+selectInput(
+  "Anyo_Final_2",
+  label = "Fecha fin",
+  choices = unique(sort(tabla_final_longer$Anyo)),
+  selected = 2022
+)
+```
+
+```{r}
+# Cuarto Input
+radioButtons(
+    "modo_visualizacion_2",
+    label = "Modo de visualización",
+    choices = c("Por cada 100,000 habitantes" = "normalizado", "Valores Absolutos" = "absolutos"),
+    selected = "normalizado"
+  )
+```
+
+```{r}
+# Función reactiva adaptada
+inputs.processing2 <- reactive({
+  # Selecciona la tabla en función del modo de visualización
+  tb <- if (input$modo_visualizacion_2 == "normalizado") {
+    tabla_final_miles_longer
+  } else {
+    tabla_final_longer
+  }
+  
+  tb <- tb %>%
+    filter(
+      CCAA %in% input$CCAA,
+      Anyo >= input$Anyo_Inicio_2,
+      Anyo <= input$Anyo_Final_2
+    ) %>%
+    mutate(
+      Anyo = as.factor(Anyo)
+    )
+  
+  return(tb)
+})
+```
+
+Column{.tabset}
+------------------------------------------------------
+### Evolución
+
+```{r}
+renderHighchart({
+  datos_2 <- inputs.processing2() %>% 
+    filter(TipoDelito == "Tot_Del")
+  
+  datos_2 %>% 
+  hchart("line", hcaes(x = Anyo, y = Values, group = CCAA))  %>%
+  hc_xAxis(title = list(text = "Año")) %>%
+  hc_yAxis(title = list(text = "Delitos Registrados"))
+})
+```
+
+### Mapa de Calor (según CCAA)
+
+```{r}
+renderPlotly({
+  datos <- inputs.processing2() %>% 
+    filter(TipoDelito == "Tot_Del") %>% 
+    group_by(Anyo, CCAA) %>%
+    summarize(
+      Delitos_Total = sum(Values, na.rm = TRUE),
+      .groups = 'drop'
+    ) %>%
+    group_by(CCAA) %>%
+    mutate(
+      Delitos_Normalizados = scales::rescale(Delitos_Total, to = c(0, 1))
+    ) %>%
+    ungroup()
+  
+  datos %>%
+    ggplot(aes(
+      x = Anyo,
+      y = CCAA,
+      fill = Delitos_Normalizados,
+      text = paste(
+        "Año:", Anyo,
+        "<br>Tipo de Delito:", CCAA,
+        "<br>Valor Real:", round(Delitos_Total, 2),
+        "<br>Valor Normalizado:", round(Delitos_Normalizados, 2)
+      )
+    )) +
+    geom_tile(color = "lightblue", lwd = 0.5, linetype = 1) +
+    scale_fill_gradientn(name = "Valor Normalizado", colors = brewer.pal(9, "YlOrRd")) +
+    labs(x = "Año", y = "Tipo de Delito", title = "Mapa de Calor de Delitos por Año y Tipo") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    labs(x="Año", 
+       y = "CCAA"
+       )
+  
+  ggplotly(tooltip = "text")
+})
+```
+
+Column
+--------------------------------------------------------------------------------
+
+### Datos 
+```{r}
+renderDataTable({
+  inputs.processing2() %>%
+        dplyr::mutate(TipoDelito = dplyr::recode(
+      TipoDelito,
+      Tot_Del = "Total de infracciones penales",
+      Cntr_Per = "Contra las personas",
+      Cntr_Lib = "Contra la libertad",
+      Cntr_Pat = "Contra el patrimonio",
+      Cntr_Segcol = "Contra la seguridad colectiva",
+      Fal = "Falsedades",
+      Cntr_Adm_Jus = "Contra la administración de justicia",
+      Cntr_Ordpub = "Contra el orden público",
+      Rest_Del = "Otras infracciones penales"
+    )) %>% 
+    dplyr::select(Anyo, CCAA, TipoDelito, Values) %>%
+    arrange(Anyo, CCAA, TipoDelito) %>% 
+    dplyr::rename(
+      Año = Anyo,
+      `Tipo de Delito` = TipoDelito,
+      `Delitos Registrados` = Values
+    )
+  }, 
+  
+  options = list(
+  pageLength = 10,
+  lengthMenu = c(10, 20, 30, 40, 50, 100, 125, 150, 200, 250), 
+  scrollY = 525,
+  lengthChange = TRUE,
+  autoWidth = TRUE,
+  searching = TRUE,
+  autoWidth = TRUE)
+  
+  )
+```
+
+Análisis de Atributos
+================================================================================
+
+Column
+----------------------------------------------------------
+
+### Matriz de correlación
+```{r}
+renderHighchart({
+  tabla_final_miles %>%
+    filter(CCAA != "Total Nacional") %>% 
+    dplyr::select_if(is.numeric) %>% 
+    cor(use = "complete.obs") %>% 
+    hchart()
+})
+```
+
+### Porcentaje de varianza explicada por las componentes principales
+```{r}
+pca <- tabla_final_miles %>%
+  filter(CCAA != "Total Nacional") %>% 
+  mutate(ID = paste(CCAA, Anyo, sep = "_")) %>% 
+  dplyr::select(-Anyo) %>% 
+  column_to_rownames(var = "ID") %>% 
+  dplyr::select_if(is.numeric) %>%
+  prcomp(scale = TRUE)
+```
+
+```{r}
+renderPlotly({
+  var_ex <- tibble(
+    label = fct_inorder(paste("PC", 1:length(pca$sdev))),
+    varPercent = pca$sdev^2 / sum(pca$sdev^2) * 100
+  ) %>%  
+    ggplot(aes(x = label, y = varPercent, text = paste0("Label: ", label, "<br>varPercent: ", round(varPercent, 7)))) +
+    geom_bar(stat = "identity") +
+    labs(
+      x = "Componentes Principales",
+      y = "Porcentaje de Varianza Explicada"
+    ) +
+    geom_text(aes(label = paste0(round(varPercent, digits = 1), "%")),
+              size = 3,
+              colour = "blue",
+              nudge_y = 1)
+
+  ggplotly(var_ex, tooltip = "text")
+})
+
+```
+
+Column
+-------------------------------------------------------
+
+### Gráfico de dispersión con las dos primeras componentes
+```{r}
+highcharter::renderHighchart({
+pca2 <- tabla_final_miles %>%
+  filter(CCAA != "Total Nacional", Anyo %in% c(2020:2022)) %>% 
+  mutate(ID = paste(CCAA, Anyo, sep = "_")) %>% 
+  dplyr::select(-Anyo, -Tot_Del) %>% 
+  column_to_rownames(var = "ID") %>% 
+  dplyr::select_if(is.numeric) %>%
+  prcomp(scale = TRUE)
+
+ hchart(pca2,choices=c(1,2))
+})
+```
+
+Comparaciones de atributos
+================================================================================
+
+Column{.sidebar data-width=230}
+--------------------------------------------------
+```{r}
+# Widgets para selección de parámetros 
+selectInput(
+  "x", 
+  label = "Indicador 1:",
+  choices = setdiff(colnames(tabla_final)[-1], c("CCAA", "Rent_Net_Cat", "Tasa_Paro_Cat")), 
+  selected = "Rent_Net_Mh"
+)
+
+selectInput(
+  "x_scale", 
+  label = "Transformación de Escala Indicador 1:",
+  choices = c("none", "sqrt", "log"), 
+  selected = "none"
+)
+
+selectInput(
+  "y", 
+  label = "Indicador 2:",
+  choices = setdiff(colnames(tabla_final)[-1], c("CCAA", "Rent_Net_Cat", "Tasa_Paro_Cat")), 
+  selected = "Tot_Del"
+)
+
+selectInput(
+  "y_scale", 
+  label = "Transformación de Escala Indicador 2:",
+  choices = c("none", "log", "boxcox"), 
+  selected = "none"
+)
+```
+
+```{r}
+shiny::renderUI({
+  
+  # capturamos el resultado del procesado de los inputs 
+  tb <- inputs.processing3()[[1]]
+  fit <- inputs.processing3()[[2]]
+  lambda <- inputs.processing3()[[3]]
+  
+  # imprimimos el resultado en formato HTML 
+  text <- 
+  paste(
+    "<strong>LINEAR REGRESSION ANALYSIS</strong> <br>",
+    "<strong>formula:   y=ax+b </strong><br>",
+    "<strong>x: indicator 1 scaled </strong><br>",
+    "<strong>y: indicator 2 scaled </strong><br>",
+    "<strong><br>RESULTS</strong><br>",
+    "<strong>correlation:</strong>",round(cor(tb$x,tb$y),digits = 4),
+    "<br><strong>slope (a):</strong>",formatC(fit$coefficients[2], format = "e", digits = 2),
+    "<br><strong>independent (b):</strong>",formatC(fit$coefficients[1], format = "e", digits = 2)
+  )
+  if(input$y_scale=="boxcox"){
+    text <- paste(text,"<br><strong> lambda (box-cox) :</strong>",formatC(lambda, format = "e", digits = 2))
+  } 
+      
+  HTML(text)
+})
+```
+
+
+```{r}
+  inputs.processing3 <- reactive({
+    tb <- tabla_final_miles %>%
+      filter(CCAA != "Total Nacional") %>%  # Filtrar Total Nacional
+      na.omit() %>%  # Eliminar filas con NA
+      transmute(
+        country = CCAA,
+        x = .[[input$x]],
+        y = .[[input$y]]
+      )
+    
+    # Escalar los indicadores
+    if (input$x_scale == "sqrt") tb$x <- sqrt(tb$x)
+    if (input$x_scale == "log") tb$x <- log(tb$x)
+    if (input$y_scale == "log") tb$y <- log(tb$y)
+    
+    lambda <- 1
+    if (input$y_scale == "boxcox") {
+      bc <- MASS::boxcox(y ~ x, data = tb)
+      lambda <- round(bc$x[which.max(bc$y)], 4)
+      if (lambda != 0) {
+        tb$y <- (tb$y^lambda - 1) / lambda
+      } else {
+        tb$y <- log(tb$y)
+      }
+    }
+    
+    # Ajusta la regresión lineal
+    fit <- lm(y ~ x, data = tb)
+    
+    list(tb = tb, fit = fit, lambda = lambda)
+
+  })
+```
+
+Column{.tabset data-width=800}
+-------------------------------------------------------------------------
+
+### Scaled Indicators Comparison
+
+```{r}
+renderPlotly({
+    results <- inputs.processing3()
+    tb <- results$tb
+    
+    scatter_plot <- ggplot(tb, aes(x = x, y = y, label = country)) +
+      geom_point(color = "steelblue") +
+      geom_smooth(method = "lm", se = FALSE, color = "red") +
+      labs(
+        x = paste("Indicador 1:", input$x),
+        y = paste("Indicador 2:", input$y),
+        title = "Gráfico de Dispersión con Recta de Regresión"
+      ) +
+      theme_minimal()
+    
+    ggplotly(scatter_plot)
+  })
+```
+
+Column
+--------------------------------------------------------------------------------
+
+
+### Variables
+
+En el análisis cuadro de mandos, algunas variables tienen nombres abreviados que pueden resultar difíciles de interpretar a primera vista. A continuación, se ofrece una tabla con la descripción completa de cada tipo de delito.
+
+
+```{r}
+tabla_2 <- data.frame(
+ Variable = c("Cntr_Lib", "Cntr_Pat", "Cntr_Per",  
+               "Cntr_Segcol", "Rest_Del", "Tot_Del", "Pob",
+              "Tasa_Paro", "Rent_Net_Mh"),
+  Descripción = c("Contra la libertad", 
+                  "Contra el patrimonio",
+                  "Contra las personas",
+                  "Contra la seguridad colectiva", 
+                  "Resto de Delitos",
+                  "Total de Delitos",
+                  "Población",
+                  "Tasa de Paro",
+                  "Renta Neta Media por Hogar")
+)
+```
+
+```{r}
+renderTable({
+  tabla_2
+}, 
+striped = TRUE, 
+hover = TRUE, 
+spacing = "m", 
+width = "80%", 
+align = "c")
+```
