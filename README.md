@@ -108,13 +108,8 @@ cd crime-trends-in-Spain
 
 ## ▶️ Ejecución
 
-Existen dos formas principales de ejecutar el proyecto según el recurso que quieras visualizar:
-
 ### 📝 Memoria
-- **Opción recomendada:** abrir directamente el archivo HTML generado:  
-  [proyecto_SEMESTRAL_DELITOS_PABLO_CABEZA.html](proyecto_SEMESTRAL_DELITOS_PABLO_CABEZA.html) en cualquier navegador.  
-- **Opción alternativa:** abrir el archivo fuente en RStudio:  
-  [proyecto_SEMESTRAL_DELITOS_PABLO_CABEZA.Rmd](proyecto_SEMESTRAL_DELITOS_PABLO_CABEZA.Rmd) y compilarlo manualmente para generar el `.html`.
+- Abrir el archivo fuente en RStudio: [proyecto_SEMESTRAL_DELITOS_PABLO_CABEZA.Rmd](proyecto_SEMESTRAL_DELITOS_PABLO_CABEZA.Rmd) y compilarlo manualmente para generar el `.html`.
 
 ### 📊 Cuadro de Mandos
 - Siempre debe ejecutarse desde RStudio.  
