@@ -1,4 +1,4 @@
-# Tendencias Delictivas en España
+# 📈 Tendencias Delictivas en España
 ![R Version](https://img.shields.io/badge/R-%3E%3D4.3.1-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Status](https://img.shields.io/badge/status-finished-success)
